@@ -1,0 +1,54 @@
+{
+  "name": "paseo-notify-ts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Native Paseo notifications and automatic recovery with optional AI review",
+  "license": "MIT",
+  "author": "Makiras",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Makiras/paseo-notify-ts.git"
+  },
+  "homepage": "https://github.com/Makiras/paseo-notify-ts#readme",
+  "bugs": {
+    "url": "https://github.com/Makiras/paseo-notify-ts/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.client.ts",
+    "index.client.tsx",
+    "index.server.ts",
+    "index.server.tsx",
+    "client/",
+    "server/",
+    "shared/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build:check",
+    "build:check": "node scripts/build-check.mjs",
+    "package:check": "node scripts/package-check.mjs",
+    "format": "prettier --write index.* shared server client scripts tests *.json *.md"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.11.2",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^22.20.5",
+    "@types/react": "~19.2.0",
+    "@types/react-test-renderer": "^19.3.0",
+    "esbuild": "^0.25.12",
+    "prettier": "^3.6.2",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-test-renderer": "^19.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "zod": "^4.4.3"
+  }
+}

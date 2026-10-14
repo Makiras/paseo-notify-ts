@@ -1,0 +1,8 @@
+{
+  "id": "paseo-notifier",
+  "name": "Paseo Notifier",
+  "description": "自动恢复临时故障，支持独立 AI 复核和九种通知渠道。",
+  "requirements": {
+    "paseo": ">=0.11.2"
+  }
+}

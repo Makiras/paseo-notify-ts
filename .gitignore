@@ -1,0 +1,16 @@
+node_modules/
+.build/
+coverage/
+*.tgz
+.state/
+dist/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+credentials.json
+operations.json
+owner.lock
+reap.lock
+.DS_Store
