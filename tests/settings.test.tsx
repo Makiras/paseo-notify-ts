@@ -48,6 +48,7 @@ vi.mock("react-native", () => ({
   Pressable: "Pressable",
 }));
 vi.mock("@getpaseo/plugin/client/react-native", () => ({
+  ScrollView: "ScrollView",
   TextInput: "TextInput",
   copyText: vi.fn(async () => {}),
 }));
@@ -100,43 +101,52 @@ async function selectSection(section: string) {
       .props.onValueChange(section),
   );
 }
+async function pressAction(actionLabel: string) {
+  await act(async () =>
+    renderer.root.findByProps({ actionLabel }).props.onPress(),
+  );
+}
 describe("native settings drafts", () => {
-  it("explains templates on the page, adds working examples, and saves the draft across sections", async () => {
+  it("keeps template editing and preview visible while help and rules open on demand", async () => {
     await render();
     await selectSection("notifications");
     expect(
-      isVisible(renderer.root.findByProps({ label: "Pattern 如何填写" })),
+      isVisible(renderer.root.findByProps({ accessibilityLabel: "正文模板" })),
     ).toBe(true);
+    expect(
+      isVisible(
+        renderer.root.findByProps({ accessibilityLabel: "预览正文内容" }),
+      ),
+    ).toBe(true);
+    expect(
+      renderer.root.findAllByProps({ label: "Pattern 如何填写" }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({ actionLabel: "添加工单号示例" }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({ accessibilityLabel: "示例回复" }),
+    ).toHaveLength(0);
+    await pressAction("展开填写帮助");
     expect(
       renderer.root.findByProps({ label: "Pattern 如何填写" }).props.hint,
     ).toContain("组 1");
-    await act(async () =>
-      renderer.root
-        .findByProps({ actionLabel: "展开字段说明" })
-        .props.onPress(),
-    );
     expect(
       renderer.root.findByProps({ label: "{{summary}}" }).props.hint,
     ).toContain("不是 AI 回复");
+    await pressAction("收起填写帮助");
     await act(async () =>
       renderer.root
         .findByProps({ label: "附带最终回复摘要" })
         .props.onValueChange(true),
     );
-    await act(async () =>
-      renderer.root
-        .findByProps({ actionLabel: "添加工单号示例" })
-        .props.onPress(),
-    );
-    await act(async () =>
-      renderer.root
-        .findByProps({ actionLabel: "添加结果链接示例" })
-        .props.onPress(),
-    );
+    await pressAction("展开提取规则");
+    await pressAction("添加工单号示例");
     expect(
       renderer.root.findByProps({ label: "{{custom.ticket}} · 已匹配" }).props
         .hint,
     ).toBe("PROJ-123");
+    await pressAction("添加结果链接示例");
     expect(
       renderer.root.findByProps({ label: "{{custom.link}} · 已匹配" }).props
         .hint,
@@ -144,9 +154,17 @@ describe("native settings drafts", () => {
     const input = () =>
       renderer.root.findByProps({ accessibilityLabel: "正文模板" });
     const before = input().props.value;
+    await pressAction("收起提取规则");
     await selectSection("channels");
     await selectSection("notifications");
     expect(input().props.value).toBe(before);
+    await pressAction("展开提取规则");
+    expect(
+      renderer.root.findByProps({ label: "编辑提取规则" }).props.value,
+    ).toBe("1");
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "变量名" }).props.value,
+    ).toBe("link");
     await act(async () =>
       renderer.root.findByProps({ actionLabel: "保存设置" }).props.onPress(),
     );
@@ -168,6 +186,7 @@ describe("native settings drafts", () => {
   it("blocks malformed patterns and routes the error action back to notification management", async () => {
     await render();
     await selectSection("notifications");
+    await pressAction("展开提取规则");
     await act(async () =>
       renderer.root
         .findByProps({ actionLabel: "添加工单号示例" })
@@ -184,6 +203,11 @@ describe("native settings drafts", () => {
     expect(
       renderer.root.findByProps({ label: "模板需要修改" }).props.error,
     ).toContain("Pattern 无效");
+    await pressAction("添加结果链接示例");
+    await pressAction("收起提取规则");
+    expect(
+      renderer.root.findAllByProps({ accessibilityLabel: "Pattern 表达式" }),
+    ).toHaveLength(0);
     await selectSection("channels");
     await act(async () =>
       renderer.root.findByProps({ actionLabel: "前往修改" }).props.onPress(),
@@ -194,10 +218,19 @@ describe("native settings drafts", () => {
     expect(
       isVisible(renderer.root.findByProps({ label: "模板需要修改" })),
     ).toBe(true);
+    await pressAction("展开错误规则");
+    expect(
+      renderer.root.findByProps({ label: "编辑提取规则" }).props.value,
+    ).toBe("0");
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "Pattern 表达式" }).props
+        .value,
+    ).toBe("(");
   });
   it("keeps reply samples local and respects the preview privacy switch", async () => {
     await render();
     await selectSection("notifications");
+    await pressAction("展开提取规则");
     await act(async () =>
       renderer.root
         .findByProps({ actionLabel: "添加工单号示例" })
@@ -207,11 +240,21 @@ describe("native settings drafts", () => {
       renderer.root.findByProps({ label: "{{custom.ticket}} · 使用默认值" })
         .props.hint,
     ).toBe("未提供工单号");
+    await pressAction("编辑示例数据");
     await act(async () =>
       renderer.root
         .findByProps({ accessibilityLabel: "示例回复" })
         .props.onChangeText("LOCAL-999"),
     );
+    await pressAction("收起示例数据");
+    await pressAction("收起提取规则");
+    await selectSection("channels");
+    await selectSection("notifications");
+    await pressAction("编辑示例数据");
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "示例回复" }).props.value,
+    ).toBe("LOCAL-999");
+    await pressAction("展开提取规则");
     await act(async () =>
       renderer.root
         .findByProps({ label: "附带最终回复摘要" })

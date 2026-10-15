@@ -563,6 +563,20 @@ function Editor({
           </SettingsSection>
         </SettingsPanel>
         <SettingsPanel active={section === "notifications"}>
+          <MessageTemplates
+            value={draft.notifications.template}
+            notifications={draft.notifications}
+            theme={theme}
+            disabled={busy || transferBusy}
+            onChange={(template) =>
+              patch({ notifications: { ...draft.notifications, template } })
+            }
+            onPreviewChange={(includePreview) =>
+              patch({
+                notifications: { ...draft.notifications, includePreview },
+              })
+            }
+          />
           <SettingsSection key={`delivery:${formKey}`} title="通知内容与投递">
             <SettingsCard>
               <SettingsSwitch
@@ -571,16 +585,6 @@ function Editor({
                 value={draft.includeSubagents}
                 onValueChange={(includeSubagents) =>
                   patch({ includeSubagents })
-                }
-              />
-              <SettingsSwitch
-                label="附带最终回复摘要"
-                hint="开启后会把最终回复的截取内容发送给所选渠道"
-                value={draft.notifications.includePreview}
-                onValueChange={(includePreview) =>
-                  patch({
-                    notifications: { ...draft.notifications, includePreview },
-                  })
                 }
               />
               <SettingsInput
@@ -621,15 +625,6 @@ function Editor({
               />
             </SettingsCard>
           </SettingsSection>
-          <MessageTemplates
-            value={draft.notifications.template}
-            notifications={draft.notifications}
-            theme={theme}
-            disabled={busy || transferBusy}
-            onChange={(template) =>
-              patch({ notifications: { ...draft.notifications, template } })
-            }
-          />
         </SettingsPanel>
       </View>
       <SettingsPanel active={section === "transfer"}>

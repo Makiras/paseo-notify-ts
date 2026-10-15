@@ -80,6 +80,7 @@ vi.mock("react-native", () => ({
   Pressable: "Pressable",
 }));
 vi.mock("@getpaseo/plugin/client/react-native", () => ({
+  ScrollView: "ScrollView",
   TextInput: "TextInput",
   copyText: vi.fn(),
 }));

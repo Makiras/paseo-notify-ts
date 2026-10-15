@@ -33,7 +33,7 @@ npx playwright install --with-deps chromium firefox
 npm run browser:smoke
 ```
 
-该测试使用固定版本的官方 Paseo CLI，把 `npm pack` 产物安装到临时 Host，实际启动服务和网页界面。Chromium、Firefox 分别完成：进入插件设置、切换全部栏目、模板与正则校验、保存与刷新后恢复、ntfy 保存后立即测试，以及窄屏下拉栏目切换。
+该测试使用固定版本的官方 Paseo CLI，把 `npm pack` 产物安装到临时 Host，实际启动服务和网页界面。Chromium、Firefox 分别完成：进入插件设置、切换全部栏目、模板宽窄屏布局、帮助与规则折叠、示例草稿保留、折叠后的错误规则定位、模板与正则校验、保存与刷新后恢复、ntfy 保存后立即测试，以及窄屏下拉栏目切换。
 
 所有 CLI 操作显式指定临时 `PASEO_HOME`，禁用 relay 和 AI 提供方，不操作现有 Host。通知只发送给测试创建的本地 HTTP 接收器。测试结束停止临时 Host；截图、浏览器错误、trace 和测试 Host 日志保存在忽略目录 `.build/browser-smoke/`。可用 `PASEO_TEST_BROWSERS=firefox npm run browser:smoke` 单独运行一个浏览器。
 

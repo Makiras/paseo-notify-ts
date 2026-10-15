@@ -169,12 +169,83 @@ async function checkBrowser(name) {
       await section(label);
     await section("通知管理");
     const preview = page.getByLabel("预览正文内容", { exact: true });
+    await expect(page.getByLabel("标题模板", { exact: true })).toBeVisible();
+    await expect(preview).toBeVisible();
+    await expect(page.getByLabel("示例回复", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByLabel("Pattern 表达式", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Pattern 如何填写", { exact: true }),
+    ).toHaveCount(0);
+    const editorBounds = await page
+      .getByTestId("template-editor-preview")
+      .boundingBox();
+    const titleBounds = await page
+      .getByLabel("标题模板", { exact: true })
+      .boundingBox();
+    const previewBounds = await page
+      .getByLabel("预览标题内容", { exact: true })
+      .boundingBox();
+    assert.ok(editorBounds && titleBounds && previewBounds);
+    if (editorBounds.width >= 680)
+      assert.ok(
+        previewBounds.x > titleBounds.x + titleBounds.width,
+        "Wide preview must sit beside the editor",
+      );
+    else
+      assert.ok(
+        previewBounds.y > titleBounds.y,
+        "Narrow preview must follow the editor",
+      );
+    await page.screenshot({
+      path: join(artifacts, "template-desktop.png"),
+      fullPage: true,
+    });
     await expect(preview).not.toContainText("PROJ-123");
     await page.getByRole("switch", { name: "附带最终回复摘要" }).click();
+    await page
+      .getByRole("button", { name: "展开填写帮助", exact: true })
+      .click();
+    await expect(
+      page.getByText("Pattern 如何填写", { exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "收起填写帮助", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "展开提取规则", exact: true })
+      .click();
     await page
       .getByRole("button", { name: "添加工单号示例", exact: true })
       .click();
     await expect(preview).toContainText("工单号：PROJ-123");
+    await page
+      .getByRole("button", { name: "编辑示例数据", exact: true })
+      .click();
+    const sample = page.getByLabel("示例回复", { exact: true });
+    const originalSample = await sample.inputValue();
+    await sample.fill("LOCAL-456");
+    await expect(preview).toContainText("工单号：LOCAL-456");
+    await page
+      .getByRole("button", { name: "收起示例数据", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "收起提取规则", exact: true })
+      .click();
+    await section("通知渠道");
+    await section("通知管理");
+    await page
+      .getByRole("button", { name: "编辑示例数据", exact: true })
+      .click();
+    await expect(sample).toHaveValue("LOCAL-456");
+    await sample.fill(originalSample);
+    await page
+      .getByRole("button", { name: "收起示例数据", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "展开提取规则", exact: true })
+      .click();
     const title = `CI ${name} · {{event}} · {{title}}`;
     await page.getByLabel("标题模板", { exact: true }).fill(title);
     const pattern = page.getByLabel("Pattern 表达式", { exact: true });
@@ -184,6 +255,14 @@ async function checkBrowser(name) {
     await expect(
       page.getByRole("button", { name: "保存设置", exact: true }),
     ).toBeDisabled();
+    await page
+      .getByRole("button", { name: "收起提取规则", exact: true })
+      .click();
+    await expect(pattern).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "展开错误规则", exact: true })
+      .click();
+    await expect(pattern).toHaveValue("(");
     await pattern.fill(validPattern);
     await page.getByRole("button", { name: "保存设置", exact: true }).click();
     await expect(page.getByText("设置已保存", { exact: true })).toBeVisible();
@@ -193,6 +272,9 @@ async function checkBrowser(name) {
       title,
     );
     await expect(preview).toContainText("工单号：PROJ-123");
+    await expect(
+      page.getByRole("button", { name: "展开提取规则", exact: true }),
+    ).toBeVisible();
     const persisted = JSON.parse(await readFile(settingsFile, "utf8"));
     assert.equal(persisted.version, 5);
     assert.equal(persisted.values.notifications.template.title, title);
@@ -227,9 +309,33 @@ async function checkBrowser(name) {
       title,
     );
     await expect(preview).toContainText("工单号：PROJ-123");
+    const compactTitleBounds = await page
+      .getByLabel("标题模板", { exact: true })
+      .boundingBox();
+    const compactPreviewBounds = await page
+      .getByLabel("预览标题内容", { exact: true })
+      .boundingBox();
+    assert.ok(compactTitleBounds && compactPreviewBounds);
+    assert.ok(
+      compactPreviewBounds.y > compactTitleBounds.y,
+      "Compact preview must follow the editor",
+    );
+    assert.ok(
+      compactTitleBounds.x >= 0 &&
+        compactTitleBounds.x + compactTitleBounds.width <= 390,
+      "Compact editor must fit the viewport",
+    );
+    await page
+      .getByRole("button", { name: "展开提取规则", exact: true })
+      .click();
+    await expect(pattern).toHaveValue(validPattern);
+    await page
+      .getByRole("button", { name: "收起提取规则", exact: true })
+      .click();
+    await page.getByLabel("标题模板", { exact: true }).scrollIntoViewIfNeeded();
     assert.deepEqual(errors, [], "Browser errors must fail the smoke test");
     console.log(
-      `${name}: template validation/save/reload, ntfy save/test and compact settings passed`,
+      `${name}: compact template layout, folding/drafts/error recovery, save/reload and ntfy save/test passed`,
     );
   } finally {
     if (page)
