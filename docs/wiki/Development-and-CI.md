@@ -15,19 +15,52 @@ npm run host:smoke
 npm run package
 ```
 
-`host:prepare` 下载检查所用的官方 server 包到忽略目录 `.build/`，不会安装或启动用户的 daemon。`check` 包括文档链接、版本一致性、TypeScript、测试和双运行时编译。设置 `PASEO_COMPILER_PATH` 后会再用官方编译器验证边界。
+`host:prepare` 下载检查所用的官方 server 包到忽略目录 `.build/`，不会安装或启动用户的 daemon。`check` 包括文档链接、版本一致性、内嵌依赖一致性、TypeScript、测试和双运行时编译。设置 `PASEO_COMPILER_PATH` 后会再用官方编译器验证边界。
 
 `host:smoke` 使用官方 bundle 执行器、设置存储和任务存储，验证配置迁移、保存后 RPC 顺序、任务元数据与通知路由；会话 SDK 和外部发送使用替身，不运行真实 AI、不发送实际通知。
 
 `package` 用 npm 白名单生成 `.tgz`，检查排除项，在没有开发依赖的解压目录用宿主编译器验证双入口，并写入 SHA-256 与 `release.json`。`package:check` 做同样验证但不保留输出。安装包包含插件源码、内嵌正则引擎、概述、README、许可证及 Wiki 源文件，不包含凭据、运行数据、node_modules 或测试。
 
-模板在客户端预览与服务端发送时共用 `shared/templates.ts`。自定义正则使用固定版本 RE2JS，Pattern、编译程序规模、规则数和来源长度均有上限，不交给原生回溯正则引擎执行。引擎及类型、MIT 许可内嵌在 `shared/vendor/`，宿主无需安装额外 npm 包。更新开发依赖后运行 `npm run vendor:update` 重新生成；`check` 中的 `vendor:check` 核对生成结果与锁定依赖一致。模板及提取值不写入投递日志副本，发送时用当前设置渲染，并再次应用摘要隐私限制。
+模板在客户端预览与服务端发送时共用 `shared/templates.ts`。自定义正则使用固定版本 RE2JS，Pattern、编译程序规模、规则数和来源长度均有上限，不交给原生回溯正则引擎执行。引擎及类型、MIT 许可内嵌在 `shared/vendor/`，宿主无需安装额外 npm 包。生成时先转换类语法，再压缩；Paseo 使用 `eval` 动态加载插件，Android Hermes 的这条路径不能直接使用该依赖原来的类表达式。仅指定 ES2020 或在 Node 中编译通过无法验证这种兼容性。
+
+更新开发依赖后运行 `npm run vendor:update` 重新生成；`check` 中的 `vendor:check` 核对生成结果与锁定依赖一致。模板及提取值不写入投递日志副本，发送时用当前设置渲染，并再次应用摘要隐私限制。
+
+## 真实 Host 与浏览器检查
+
+```sh
+npm ci
+npx playwright install --with-deps chromium firefox
+npm run browser:smoke
+```
+
+该测试使用固定版本的官方 Paseo CLI，把 `npm pack` 产物安装到临时 Host，实际启动服务和网页界面。Chromium、Firefox 分别完成：进入插件设置、切换全部栏目、模板与正则校验、保存与刷新后恢复、ntfy 保存后立即测试，以及窄屏下拉栏目切换。
+
+所有 CLI 操作显式指定临时 `PASEO_HOME`，禁用 relay 和 AI 提供方，不操作现有 Host。通知只发送给测试创建的本地 HTTP 接收器。测试结束停止临时 Host；截图、浏览器错误、trace 和测试 Host 日志保存在忽略目录 `.build/browser-smoke/`。可用 `PASEO_TEST_BROWSERS=firefox npm run browser:smoke` 单独运行一个浏览器。
+
+## Android Hermes 检查
+
+在 Linux 开发环境准备 Git、CMake、Ninja、C++ 编译器和 ICU 开发库后执行：
+
+```sh
+npm run hermes:prepare
+npm run hermes:smoke
+```
+
+`hermes:prepare` 读取锁定 React Native 包中的 Hermes 提交号，获取官方源码并构建运行器；构件保存在 `.build/hermes/`。可通过 `HERMES_PATH` 指定已经准备好的运行器。
+
+`hermes:smoke` 用官方 Paseo 编译器生成插件，再通过 Hermes 的 `globalThis.eval` 加载未经二次转换的插件 bundle。它验证客户端初始化、设置与工作区入口注册、默认配置、正则提取、中文与标志位匹配、非法 Pattern 和摘要隐私限制。测试宿主的 React、Zod 等模块提前转换，模拟原生 App 由 Metro 编译的宿主模块；网络和会话接口使用替身。
+
+这能捕获 v0.3.0 的 `right operand of 'in' is not an object` 回归。它是实际引擎兼容测试，**不等同于 Android 模拟器或真机上的原生 UI 测试**；键盘、系统控件及设备通知展示仍需真机验证。
 
 ## CI
 
-[Checks](https://github.com/Makiras/paseo-notify-ts/actions/workflows/ci.yml) 在 main 推送、PR 和手动触发时运行，矩阵为 Node.js 22 / 24。两组都运行完整检查、宿主冒烟和打包，Node.js 22 上传安装构件，保存 14 天。
+[Checks](https://github.com/Makiras/paseo-notify-ts/actions/workflows/ci.yml) 在 main 推送、PR 和手动触发时运行：
 
-CI 默认只有读取仓库权限。发布流程复用同一组检查；发布阶段单独获得 `contents: write`，只有检查通过后才创建 Release。
+- Node.js 22 / 24：完整检查、宿主冒烟和打包；Node.js 22 上传安装构件，保存 14 天。
+- `installed-host`：安装并启动真实 Paseo，在 Chromium 和 Firefox 中执行设置页回归；失败时上传浏览器诊断构件，保存 7 天。
+- `android-runtime`：构建并缓存与 React Native 对应的 Hermes，执行插件动态加载和模板测试。
+
+CI 默认只有读取仓库权限。发布流程复用全部检查；发布阶段单独获得 `contents: write`，只有包括真实 Host 和 Hermes 在内的所有任务通过后才创建 Release。
 
 ## 发布一个版本
 

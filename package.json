@@ -1,7 +1,7 @@
 {
   "name": "paseo-notify-ts",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Native Paseo notifications and automatic recovery with optional AI review",
   "license": "MIT",
@@ -38,6 +38,9 @@
     "package": "node scripts/package-check.mjs --keep",
     "host:prepare": "node scripts/prepare-host.mjs",
     "host:smoke": "node scripts/host-smoke.mjs",
+    "browser:smoke": "node scripts/browser-smoke.mjs",
+    "hermes:prepare": "node scripts/prepare-hermes.mjs",
+    "hermes:smoke": "node scripts/hermes-smoke.mjs",
     "format": "prettier --write index.* shared server client scripts tests docs .github/workflows *.json *.md",
     "docs:check": "node scripts/docs-check.mjs",
     "wiki:publish": "node scripts/wiki-publish.mjs",
@@ -47,7 +50,11 @@
     "vendor:update": "node scripts/vendor.mjs --write"
   },
   "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/plugin-transform-classes": "7.29.7",
+    "@getpaseo/cli": "0.11.2",
     "@getpaseo/plugin": "0.11.2",
+    "@playwright/test": "1.64.1",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.20.5",
     "@types/react": "~19.2.0",

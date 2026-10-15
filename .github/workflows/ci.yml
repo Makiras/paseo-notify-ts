@@ -15,6 +15,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  android-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Prepare Hermes build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build g++ libicu-dev
+      - uses: actions/cache@v6.1.0
+        with:
+          path: .build/hermes/
+          key: ${{ runner.os }}-${{ runner.arch }}-hermes-${{ hashFiles('package-lock.json', 'scripts/prepare-hermes.mjs') }}
+      - name: Build the engine pinned by React Native
+        run: npm run hermes:prepare
+      - name: Dynamically load the official plugin bundle in Hermes
+        run: npm run hermes:smoke
+  installed-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox
+      - name: Install plugin into Paseo and exercise settings in real browsers
+        run: npm run browser:smoke
+      - uses: actions/upload-artifact@v7.0.2
+        if: failure()
+        with:
+          name: paseo-browser-diagnostics
+          path: .build/browser-smoke/
+          include-hidden-files: true
+          retention-days: 7
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
