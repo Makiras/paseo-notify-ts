@@ -23,10 +23,11 @@ export const transferSchema = z
     version: z.literal(1),
     config: configSchema.refine(
       (v) =>
+        !Object.keys(v.routing.schedules).length &&
         !Object.keys(v.routing.workspaces).length &&
         !Object.keys(v.routing.sessions).length &&
         v.channels.every((c) => !c.workspaceIds.length),
-      "跨 Host 配置不能包含本地 Workspace / Session 绑定或工作区过滤",
+      "跨 Host 配置不能包含本地定时任务 / Workspace / Session 绑定或工作区过滤",
     ),
     credentials: transferSecretsSchema.optional(),
   })
@@ -58,6 +59,7 @@ export function parseTransfer(text: string): Transfer {
 
 export function portableConfig(config: Config): Config {
   const next = structuredClone(config);
+  next.routing.schedules = {};
   next.routing.workspaces = {};
   next.routing.sessions = {};
   for (const channel of next.channels) channel.workspaceIds = [];

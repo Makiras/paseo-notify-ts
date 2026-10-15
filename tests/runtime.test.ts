@@ -86,6 +86,49 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it("sends multiple scheduled runs and permission requests to the bound channel", async () => {
+    const s = await setup();
+    s.c.channels.push(
+      channelSchema.parse({ id: "hook-b", name: "Scheduled", kind: "webhook" }),
+    );
+    s.c.routing.schedules.daily = ["hook-b"];
+    await s.r.configure(s.c);
+    for (const id of ["run-one", "run-two"]) {
+      await s.r.turnEnded(
+        {
+          ...event({ kind: "completed" }),
+          agent: { ...agent, id, workspaceId: id },
+        },
+        "daily",
+      );
+    }
+    await s.r.permission(agent, "permission-one", "daily");
+    const deliveries = s.store.state.read().deliveries;
+    expect(deliveries).toHaveLength(3);
+    expect(
+      deliveries.every(
+        (d) => d.channelId === "hook-b" && d.notice.scheduleId === "daily",
+      ),
+    ).toBe(true);
+  });
+  it("retains the schedule source for recovery notifications after restart", async () => {
+    const s = await setup();
+    s.c.routing.host = [];
+    s.c.routing.schedules.daily = ["hook-a"];
+    await s.r.configure(s.c);
+    await s.r.turnEnded(event(), "daily");
+    await s.r.close();
+    await s.store.state.update((state) => {
+      state.recoveries[0]!.startedAt -= 60 * 60_000;
+    });
+    const resumed = new Runtime(s.store, s.sent);
+    runtimes.push(resumed);
+    await resumed.start(s.c);
+    expect(s.store.state.read().deliveries[0]).toMatchObject({
+      channelId: "hook-a",
+      notice: { scheduleId: "daily", kind: "failed" },
+    });
+  });
   it("keeps duplicate failure callbacks from aborting an in-flight review", async () => {
     const s = await setup(true);
     s.review.mockImplementation(() => new Promise(() => {}));

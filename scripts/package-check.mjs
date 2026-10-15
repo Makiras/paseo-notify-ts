@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
@@ -19,6 +28,17 @@ try {
       { encoding: "utf8" },
     ),
   )[0];
+  const paths = metadata.files.map((file) => file.path);
+  assert.ok(paths.includes("LICENSE"));
+  assert.ok(paths.includes("paseo-plugin.json"));
+  assert.equal(
+    paths.some((file) =>
+      /(^|\/)(node_modules|\.git|\.state|dist|coverage|tests)(\/|$)|(^|\/)(\.env[^/]*|credentials\.json|operations\.json|owner\.lock|reap\.lock)$/.test(
+        file,
+      ),
+    ),
+    false,
+  );
   execFileSync("tar", [
     "-xzf",
     join(directory, metadata.filename),
@@ -32,6 +52,17 @@ try {
   });
   assert.ok(result.clientBundle && result.serverBundle);
   assert.equal(await stat(join(root, "node_modules")).catch(() => null), null);
+  if (process.argv.includes("--keep")) {
+    const output = resolve("dist");
+    await mkdir(output, { recursive: true });
+    const archive = join(output, metadata.filename);
+    await copyFile(join(directory, metadata.filename), archive);
+    const hash = createHash("sha256")
+      .update(await readFile(archive))
+      .digest("hex");
+    await writeFile(`${archive}.sha256`, `${hash}  ${metadata.filename}\n`);
+    console.log(`Install archive: ${archive}`);
+  }
   console.log(
     `Packed plugin: ${metadata.entryCount} files, both entries accepted by the host without development dependencies.`,
   );

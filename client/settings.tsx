@@ -26,12 +26,17 @@ import {
   statusRpc,
   type RuntimeStatus,
 } from "../shared/contracts";
-import { ChannelEditor, newChannel } from "./channel-editor";
+import {
+  ChannelEditor,
+  newChannel,
+  type CredentialEditorHandle,
+} from "./channel-editor";
 import { Activity } from "./activity";
 import { ReviewSettings } from "./review-settings";
 import { ChannelSelection } from "./channel-selection";
 import { ConfigTransfer } from "./transfer";
 import { withoutChannel } from "../shared/routing";
+import { ScheduleSelection } from "./schedules";
 
 export function Settings(props: PluginSurfaceProps) {
   const settings = useSettings(preferences);
@@ -85,6 +90,35 @@ function Editor({
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const saving = useRef(false);
+  const [savingAll, setSavingAll] = useState(false);
+  const credentialEditors = useRef(new Map<string, CredentialEditorHandle>());
+  const [credentialStates, setCredentialStates] = useState<
+    Record<string, { dirty: boolean; busy: boolean }>
+  >({});
+  const onCredentialState = useCallback(
+    (id: string, dirty: boolean, busy: boolean) => {
+      setCredentialStates((previous) =>
+        previous[id]?.dirty === dirty && previous[id]?.busy === busy
+          ? previous
+          : { ...previous, [id]: { dirty, busy } },
+      );
+    },
+    [],
+  );
+  const credentialsDirty = draft.channels.some(
+    (c) => credentialStates[c.id]?.dirty,
+  );
+  const credentialsBusy = draft.channels.some(
+    (c) => credentialStates[c.id]?.busy,
+  );
+  const busy = savingAll || settings.saving;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [transferBusy, setTransferBusy] = useState(false);
   const readStatus = useRpc(statusRpc),
     removeCredentials = useRpc(deleteCredentialsRpc);
@@ -138,24 +172,59 @@ function Editor({
   const valid = configSchema.safeParse(draft);
   async function save() {
     const result = configSchema.safeParse(draft);
-    if (!result.success || saving.current || transferBusy) return;
+    if (!result.success || saving.current || settings.saving || transferBusy)
+      return;
+    const editors = draft.channels.map((channel) => ({
+      channel,
+      editor: credentialEditors.current.get(channel.id),
+    }));
+    if (editors.some(({ editor }) => editor?.busy)) return;
+    const pending = editors.filter(({ editor }) => editor?.dirty);
     saving.current = true;
+    setSavingAll(true);
+    setFeedback(null);
     const removed = settings.values.channels.filter(
       (c) => !draft.channels.some((next) => next.id === c.id),
     );
-    const ok = await settings.save(result.data, revision);
-    saving.current = false;
-    if (!ok) return;
-    setDirty(false);
-    setFeedback("设置已保存");
-    for (const channel of removed) {
-      try {
-        await removeCredentials({ id: channel.id });
-      } catch {
-        setFeedback("设置已保存，但旧渠道凭据未能清理；请检查连接后重试");
+    try {
+      // Preserve the configuration revision check, then submit secret drafts via
+      // their private RPCs. Do not put credentials in the settings document.
+      const ok = await settings.save(result.data, revision);
+      if (!ok || !mounted.current) return;
+      setDirty(false);
+      const failed: string[] = [];
+      for (const { channel, editor } of pending) {
+        if (!mounted.current) return;
+        if (!(await editor!.saveCredentials())) failed.push(channel.name);
       }
+      let cleanupFailed = false;
+      for (const channel of removed) {
+        if (!mounted.current) return;
+        try {
+          await removeCredentials({ id: channel.id });
+        } catch {
+          cleanupFailed = true;
+        }
+      }
+      setFeedback(
+        [
+          failed.length
+            ? `设置已保存；以下渠道的凭据未保存：${failed.join("、")}。输入已保留，请重试。`
+            : pending.length
+              ? "设置和凭据已保存"
+              : "设置已保存",
+          cleanupFailed ? "旧渠道凭据未能清理，请检查连接。" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+      await refresh();
+    } catch {
+      setFeedback("保存设置失败，已保留输入，请检查连接后重试");
+    } finally {
+      saving.current = false;
+      if (mounted.current) setSavingAll(false);
     }
-    await refresh();
   }
   return (
     <View style={{ gap: 16 }}>
@@ -176,19 +245,26 @@ function Editor({
             onValueChange={(includeSubagents) => patch({ includeSubagents })}
           />
           <SettingsAction
-            label={dirty ? "有未保存的修改" : "配置已同步"}
-            actionLabel={settings.saving ? "保存中…" : "保存设置"}
+            label={dirty || credentialsDirty ? "有未保存的修改" : "配置已同步"}
+            hint="先保存渠道与通用设置，再保存已填写的凭据"
+            actionLabel={busy ? "保存中…" : "保存设置"}
             disabled={
-              !dirty || settings.saving || transferBusy || !valid.success
+              (!dirty && !credentialsDirty) ||
+              busy ||
+              credentialsBusy ||
+              transferBusy ||
+              !valid.success
             }
-            onPress={() => void save()}
+            onPress={save}
           />
-          {dirty && (
+          {(dirty || credentialsDirty) && (
             <SettingsAction
-              label="放弃当前草稿并读取最新设置"
+              label="放弃未保存的设置和凭据，读取最新设置"
               actionLabel="放弃修改"
-              disabled={settings.saving}
+              disabled={busy || credentialsBusy}
               onPress={() => {
+                for (const editor of credentialEditors.current.values())
+                  editor.discardCredentials();
                 setDraft(settings.values);
                 setRevision(settings.revision);
                 setDirty(false);
@@ -221,21 +297,28 @@ function Editor({
         </SettingsCard>
       </SettingsSection>
       <View
-        key={formKey}
         style={{ gap: 16 }}
-        pointerEvents={transferBusy ? "none" : "auto"}
+        pointerEvents={transferBusy || busy ? "none" : "auto"}
       >
-        <SettingsSection title="Host 默认通知渠道">
+        {/* Refresh ordinary inputs without unmounting credential drafts. */}
+        <SettingsSection key={`defaults:${formKey}`} title="Host 默认通知渠道">
           <ChannelSelection
             channels={draft.channels}
             value={draft.routing.host}
-            disabled={settings.saving || transferBusy}
+            disabled={busy || transferBusy}
             onChange={(ids) =>
               patch({ routing: { ...draft.routing, host: ids ?? [] } })
             }
           />
         </SettingsSection>
-        <SettingsSection title="自动恢复">
+        <ScheduleSelection
+          config={draft}
+          disabled={busy || transferBusy}
+          onChange={(schedules) =>
+            patch({ routing: { ...draft.routing, schedules } })
+          }
+        />
+        <SettingsSection key={`recovery:${formKey}`} title="自动恢复">
           <SettingsCard>
             <SettingsSwitch
               label="自动继续"
@@ -291,7 +374,7 @@ function Editor({
             />
           </SettingsCard>
         </SettingsSection>
-        <SettingsSection title="通知内容与投递">
+        <SettingsSection key={`delivery:${formKey}`} title="通知内容与投递">
           <SettingsCard>
             <SettingsSwitch
               label="附带最终回复摘要"
@@ -343,7 +426,14 @@ function Editor({
         </SettingsSection>
         {draft.channels.map((channel) => (
           <ChannelEditor
-            key={channel.id}
+            key={`${channel.id}:${channel.kind}`}
+            ref={(editor) => {
+              if (editor) credentialEditors.current.set(channel.id, editor);
+              else credentialEditors.current.delete(channel.id);
+            }}
+            settingsKey={formKey}
+            disabled={busy || transferBusy}
+            onCredentialState={onCredentialState}
             channel={channel}
             saved={settings.values.channels.some(
               (c) => c.id === channel.id && c.kind === channel.kind,
@@ -383,7 +473,7 @@ function Editor({
       <ConfigTransfer
         settings={settings}
         theme={theme}
-        disabled={dirty || settings.saving}
+        disabled={dirty || credentialsDirty || credentialsBusy || busy}
         onBusyChange={setTransferBusy}
         onImported={() => {
           setDirty(false);

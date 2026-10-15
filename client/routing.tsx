@@ -2,9 +2,11 @@ import { useRef, useState } from "react";
 import { View } from "react-native";
 import {
   useSettings,
+  useAgent,
   type PluginAgentPanelProps,
   type PluginWorkspacePanelProps,
   type PluginButtonContentProps,
+  type PluginClientContext,
 } from "@getpaseo/plugin/client";
 import {
   SettingsAction,
@@ -15,14 +17,39 @@ import {
 import { preferences } from "../shared/config";
 import { routeLabel } from "../shared/routing";
 import { ChannelSelection } from "./channel-selection";
+import { scheduleIdFromLabels } from "../shared/schedules";
+
+type RoutingProps =
+  | PluginAgentPanelProps
+  | PluginWorkspacePanelProps
+  | PluginButtonContentProps;
+
+export function createRoutingPanel(
+  client: Pick<PluginClientContext, "openPanel">,
+) {
+  return function NavigableRoutingPanel(props: RoutingProps) {
+    return (
+      <RoutingPanel
+        {...props}
+        onOpenWorkspace={() => {
+          client.openPanel("workspace-routing", {
+            workspaceId: props.workspaceId,
+          });
+          if ("close" in props) props.close();
+        }}
+      />
+    );
+  };
+}
 
 export function RoutingPanel(
-  props:
-    | PluginAgentPanelProps
-    | PluginWorkspacePanelProps
-    | PluginButtonContentProps,
+  props: RoutingProps & { onOpenWorkspace?: () => void },
 ) {
   const settings = useSettings(preferences);
+  const scheduleId = useAgent(
+    props.context === "agent" ? props.agentId : "",
+    (agent) => scheduleIdFromLabels(agent.labels),
+  );
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
   if (settings.status !== "ready")
@@ -44,6 +71,7 @@ export function RoutingPanel(
   const context = {
     workspaceId: props.workspaceId,
     agentId: props.context === "agent" ? props.agentId : undefined,
+    scheduleId,
   };
   async function change(
     scope: "workspaces" | "sessions",
@@ -68,10 +96,22 @@ export function RoutingPanel(
       <SettingsCard>
         <SettingsRow
           label="当前通知去向"
-          hint={routeLabel(settings.values, context)}
+          hint={
+            props.context !== "agent" &&
+            !Object.hasOwn(
+              settings.values.routing.workspaces,
+              props.workspaceId,
+            )
+              ? `跟随所属定时任务；普通会话跟随 Host。Host 默认：${routeLabel(settings.values, {})}`
+              : routeLabel(settings.values, context)
+          }
         />
         <SettingsRow
-          label="Host → Workspace → Session"
+          label={
+            scheduleId
+              ? "Host → 定时任务 → Workspace → Session"
+              : "Host → Workspace → Session"
+          }
           hint="未单独选择时跟随上级；渠道启用状态与事件、提供方过滤仍然生效"
         />
         {!settings.values.enabled && (
@@ -107,6 +147,17 @@ export function RoutingPanel(
             onChange={(v) => void change("workspaces", props.workspaceId, v)}
           />
         </SettingsSection>
+      )}
+      {context.agentId && props.onOpenWorkspace && (
+        <SettingsCard>
+          <SettingsAction
+            label="工作区通知设置"
+            hint="配置当前工作区，影响跟随它的会话"
+            actionLabel="打开"
+            disabled={busy || settings.saving}
+            onPress={props.onOpenWorkspace}
+          />
+        </SettingsCard>
       )}
     </View>
   );

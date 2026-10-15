@@ -1,4 +1,10 @@
-import { useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { useRpc } from "@getpaseo/plugin/client";
 import {
   SettingsAction,
@@ -17,21 +23,41 @@ import {
 } from "../shared/config";
 import { saveCredentialsRpc, testChannelRpc } from "../shared/contracts";
 
-export function ChannelEditor({
-  channel,
-  saved,
-  configured,
-  onChange,
-  onRemove,
-  onCredentialsChanged,
-}: {
+export interface CredentialEditorHandle {
+  dirty: boolean;
+  busy: boolean;
+  saveCredentials(): Promise<boolean>;
+  discardCredentials(): void;
+}
+type ChannelEditorProps = {
   channel: Channel;
   saved: boolean;
   configured: boolean;
+  settingsKey: number;
+  disabled: boolean;
+  onCredentialState: (id: string, dirty: boolean, busy: boolean) => void;
   onChange: (value: Channel) => void;
   onRemove: () => void;
   onCredentialsChanged: () => void;
-}) {
+};
+
+export const ChannelEditor = forwardRef<
+  CredentialEditorHandle,
+  ChannelEditorProps
+>(function ChannelEditor(
+  {
+    channel,
+    saved,
+    configured,
+    settingsKey,
+    disabled,
+    onCredentialState,
+    onChange,
+    onRemove,
+    onCredentialsChanged,
+  },
+  ref,
+) {
   const write = useRpc(saveCredentialsRpc),
     test = useRpc(testChannelRpc);
   const defaultUrl =
@@ -47,13 +73,84 @@ export function ChannelEditor({
   const [target, setTarget] = useState("");
   const [threadId, setThreadId] = useState("");
   const [busy, setBusy] = useState(false);
+  const requestInFlight = useRef(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [reset, setReset] = useState(0);
   const [showSecrets, setShowSecrets] = useState(!configured);
+  const dirty = Boolean(
+    url !== defaultUrl || secret || token || headers || target || threadId,
+  );
+  const locked = disabled || busy;
+  function clearDraft() {
+    setUrl(defaultUrl);
+    setSecret("");
+    setToken("");
+    setHeaders("");
+    setTarget("");
+    setThreadId("");
+    setReset((n) => n + 1);
+  }
+  useEffect(() => {
+    onCredentialState(channel.id, dirty, busy);
+  }, [channel.id, dirty, busy, onCredentialState]);
+  async function saveCredentials(): Promise<boolean> {
+    if (requestInFlight.current) return false;
+    requestInFlight.current = true;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      let parsed: unknown = {};
+      try {
+        parsed = headers.trim() ? JSON.parse(headers) : {};
+      } catch {
+        throw new Error("请求头必须是有效的 JSON 对象");
+      }
+      if (
+        typeof parsed !== "object" ||
+        !parsed ||
+        Array.isArray(parsed) ||
+        Object.values(parsed).some((v) => typeof v !== "string")
+      )
+        throw new Error("请求头应为字符串键值对象");
+      await write({
+        id: channel.id,
+        kind: channel.kind,
+        credentials: {
+          url: url.trim(),
+          signingSecret: secret,
+          bearerToken: token,
+          headers: parsed as Record<string, string>,
+          target: target.trim(),
+          threadId: threadId.trim(),
+        },
+      });
+      clearDraft();
+      setShowSecrets(false);
+      setFeedback("凭据已保存");
+      onCredentialsChanged();
+      return true;
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : "凭据保存失败");
+      return false;
+    } finally {
+      requestInFlight.current = false;
+      setBusy(false);
+    }
+  }
+  useImperativeHandle(ref, () => ({
+    dirty,
+    busy,
+    saveCredentials,
+    discardCredentials() {
+      clearDraft();
+      setFeedback(null);
+      setShowSecrets(!configured);
+    },
+  }));
   const patch = (value: Partial<Channel>) => onChange({ ...channel, ...value });
   return (
     <SettingsSection title={channel.name || names[channel.kind]}>
-      <SettingsCard>
+      <SettingsCard key={settingsKey}>
         <SettingsRow
           label={names[channel.kind]}
           hint={`渠道 ID：${channel.id}`}
@@ -61,11 +158,13 @@ export function ChannelEditor({
         <SettingsSwitch
           label="启用渠道"
           value={channel.enabled}
+          disabled={locked}
           onValueChange={(enabled) => patch({ enabled })}
         />
         <SettingsInput
           label="名称"
           initialValue={channel.name}
+          disabled={locked}
           onChangeText={(name) => patch({ name })}
         />
         {(
@@ -81,6 +180,7 @@ export function ChannelEditor({
             key={kind}
             label={noticeLabels[kind]}
             value={channel.events.includes(kind)}
+            disabled={locked}
             onValueChange={(enabled) =>
               patch({
                 events: enabled
@@ -94,6 +194,7 @@ export function ChannelEditor({
           label="限定提供方"
           hint="逗号分隔；留空接收全部提供方"
           initialValue={channel.providers.join(", ")}
+          disabled={locked}
           onChangeText={(text) =>
             patch({
               providers: text
@@ -107,6 +208,7 @@ export function ChannelEditor({
           label="限定工作区 ID"
           hint="逗号分隔；留空接收全部工作区"
           initialValue={channel.workspaceIds.join(", ")}
+          disabled={locked}
           onChangeText={(text) =>
             patch({
               workspaceIds: text
@@ -116,17 +218,20 @@ export function ChannelEditor({
             })
           }
         />
+      </SettingsCard>
+      <SettingsCard>
         <SettingsRow
           label="凭据"
           hint={
             configured
               ? "已配置，保存后不会回传密钥。修改时需重新填写完整凭据。"
-              : "未配置。先保存渠道设置，再填写凭据。"
+              : "填写后点击页面上方的保存设置，会先保存渠道，再保存凭据。"
           }
         />
         <SettingsSwitch
           label={configured ? "更新凭据" : "填写凭据"}
           value={showSecrets}
+          disabled={locked}
           onValueChange={setShowSecrets}
         />
         {showSecrets && (
@@ -150,7 +255,8 @@ export function ChannelEditor({
                         : undefined
                 }
                 secureTextEntry
-                initialValue={defaultUrl}
+                initialValue={url}
+                disabled={locked}
                 placeholder="https://…"
                 onChangeText={setUrl}
               />
@@ -158,6 +264,8 @@ export function ChannelEditor({
                 <SettingsInput
                   label="签名密钥（可选）"
                   secureTextEntry
+                  initialValue={secret}
+                  disabled={locked}
                   onChangeText={setSecret}
                 />
               )}
@@ -170,12 +278,16 @@ export function ChannelEditor({
                         : "Bearer Token（可选）"
                     }
                     secureTextEntry
+                    initialValue={token}
+                    disabled={locked}
                     onChangeText={setToken}
                   />
                   {channel.kind === "webhook" && (
                     <SettingsInput
                       label="自定义请求头 JSON（可选）"
                       secureTextEntry
+                      initialValue={headers}
+                      disabled={locked}
                       placeholder='{"X-Api-Key":"…"}'
                       onChangeText={setHeaders}
                     />
@@ -191,12 +303,16 @@ export function ChannelEditor({
                       : "公共服务上的公开 topic 可被其他人订阅；私密通知请使用有访问控制的 topic"
                   }
                   secureTextEntry
+                  initialValue={target}
+                  disabled={locked}
                   onChangeText={setTarget}
                 />
               )}
               {channel.kind === "telegram" && (
                 <SettingsInput
                   label="话题 ID（可选）"
+                  initialValue={threadId}
+                  disabled={locked}
                   onChangeText={setThreadId}
                 />
               )}
@@ -205,56 +321,13 @@ export function ChannelEditor({
                 hint={
                   saved
                     ? "凭据单独保存到宿主，普通设置中仅保留渠道 ID"
-                    : "请先点击页面上方的保存设置"
+                    : "点击页面上方的保存设置，将一并提交此凭据"
                 }
                 actionLabel={busy ? "处理中…" : "保存凭据"}
-                disabled={busy || !saved || !url.trim()}
+                disabled={locked || !saved || !url.trim()}
                 onPress={async () => {
-                  setBusy(true);
-                  setFeedback(null);
-                  try {
-                    let parsed: unknown = {};
-                    try {
-                      parsed = headers.trim() ? JSON.parse(headers) : {};
-                    } catch {
-                      throw new Error("请求头必须是有效的 JSON 对象");
-                    }
-                    if (
-                      typeof parsed !== "object" ||
-                      !parsed ||
-                      Array.isArray(parsed) ||
-                      Object.values(parsed).some((v) => typeof v !== "string")
-                    )
-                      throw new Error("请求头应为字符串键值对象");
-                    await write({
-                      id: channel.id,
-                      kind: channel.kind,
-                      credentials: {
-                        url: url.trim(),
-                        signingSecret: secret,
-                        bearerToken: token,
-                        headers: parsed as Record<string, string>,
-                        target: target.trim(),
-                        threadId: threadId.trim(),
-                      },
-                    });
-                    setUrl(defaultUrl);
-                    setSecret("");
-                    setToken("");
-                    setHeaders("");
-                    setTarget("");
-                    setThreadId("");
-                    setReset((n) => n + 1);
-                    setShowSecrets(false);
-                    setFeedback("凭据已保存");
-                    onCredentialsChanged();
-                  } catch (e) {
-                    setFeedback(
-                      e instanceof Error ? e.message : "凭据保存失败",
-                    );
-                  } finally {
-                    setBusy(false);
-                  }
+                  if (locked || !saved || !url.trim()) return;
+                  return saveCredentials();
                 }}
               />
             </SettingsCard>
@@ -264,8 +337,11 @@ export function ChannelEditor({
           label="测试通知"
           hint="立即发送一条测试消息到此渠道"
           actionLabel={busy ? "处理中…" : "发送测试"}
-          disabled={busy || !saved || !configured}
+          disabled={locked || !saved || !configured}
           onPress={async () => {
+            if (requestInFlight.current || locked || !saved || !configured)
+              return;
+            requestInFlight.current = true;
             setBusy(true);
             try {
               const result = await test({ id: channel.id });
@@ -273,6 +349,7 @@ export function ChannelEditor({
             } catch {
               setFeedback("测试请求失败，请检查宿主连接");
             } finally {
+              requestInFlight.current = false;
               setBusy(false);
               onCredentialsChanged();
             }
@@ -283,13 +360,13 @@ export function ChannelEditor({
           label="移除此渠道"
           hint="保存设置后生效"
           actionLabel="移除"
-          disabled={busy}
+          disabled={locked}
           onPress={onRemove}
         />
       </SettingsCard>
     </SettingsSection>
   );
-}
+});
 export function newChannel(kind: Channel["kind"]): Channel {
   return channelSchema.parse({
     id: `channel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,

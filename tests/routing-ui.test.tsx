@@ -7,12 +7,17 @@ import type {
   SettingsState,
 } from "@getpaseo/plugin/client";
 import { configSchema } from "../shared/config";
-import { RoutingPanel } from "../client/routing";
+import { createRoutingPanel, RoutingPanel } from "../client/routing";
 import { config } from "./fixtures";
 
-const host = vi.hoisted(() => ({ settings: undefined as unknown }));
+const host = vi.hoisted(() => ({
+  settings: undefined as unknown,
+  labels: {} as Record<string, string>,
+}));
 vi.mock("@getpaseo/plugin/client", () => ({
   useSettings: () => host.settings,
+  useAgent: (id: string, select: (agent: unknown) => unknown) =>
+    id ? select({ labels: host.labels }) : null,
 }));
 vi.mock("react-native", () => ({ View: "View" }));
 vi.mock("@getpaseo/plugin/client/ui", () =>
@@ -48,6 +53,7 @@ beforeEach(() => {
     reset: vi.fn(async () => true),
   };
   host.settings = state;
+  host.labels = {};
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
@@ -60,6 +66,52 @@ async function render(
   });
 }
 describe("native notification selection", () => {
+  it("opens the current workspace settings from the session popover and closes it without saving", async () => {
+    const openPanel = vi.fn(),
+      close = vi.fn();
+    const Panel = createRoutingPanel({ openPanel });
+    await act(async () => {
+      renderer = create(createElement(Panel, { ...props, close }));
+    });
+    await act(async () =>
+      renderer.root
+        .findByProps({
+          label: "工作区通知设置",
+          actionLabel: "打开",
+        })
+        .props.onPress(),
+    );
+    expect(openPanel).toHaveBeenCalledWith("workspace-routing", {
+      workspaceId: "w",
+    });
+    expect(close).toHaveBeenCalledOnce();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+  it("shows the schedule binding in a new run and keeps it when changing the session", async () => {
+    host.labels = { "paseo.schedule-id": "daily" };
+    state.values.routing.host = [];
+    state.values.routing.schedules.daily = ["hook-a"];
+    await render();
+    expect(
+      renderer.root.findByProps({ label: "当前通知去向" }).props.hint,
+    ).toBe("Webhook · 定时任务");
+    await act(async () =>
+      renderer.root
+        .findByProps({ label: "跟随上级" })
+        .props.onValueChange(false),
+    );
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routing: {
+          host: [],
+          schedules: { daily: ["hook-a"] },
+          workspaces: {},
+          sessions: { s: [] },
+        },
+      }),
+      "r1",
+    );
+  });
   it("shows inherited source and saves explicit mute only for the selected session", async () => {
     await render();
     expect(
@@ -76,7 +128,12 @@ describe("native notification selection", () => {
     );
     expect(state.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        routing: { host: ["hook-a"], workspaces: {}, sessions: { s: [] } },
+        routing: {
+          host: ["hook-a"],
+          schedules: {},
+          workspaces: {},
+          sessions: { s: [] },
+        },
       }),
       "r1",
     );
@@ -98,6 +155,7 @@ describe("native notification selection", () => {
       expect.objectContaining({
         routing: {
           host: ["hook-a"],
+          schedules: {},
           workspaces: { w: ["hook-a"] },
           sessions: {},
         },
@@ -124,6 +182,7 @@ describe("native notification selection", () => {
       expect.objectContaining({
         routing: {
           host: ["hook-a"],
+          schedules: {},
           workspaces: { w: [] },
           sessions: { s: ["hook-a"] },
         },

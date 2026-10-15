@@ -112,6 +112,7 @@ export const notificationSchema = z.object({
   kind: noticeKindSchema,
   agentId: z.string(),
   workspaceId: z.string().nullable(),
+  scheduleId: z.string().nullable().optional(),
   provider: z.string(),
   title: z.string(),
   summary: z.string(),

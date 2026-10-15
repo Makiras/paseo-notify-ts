@@ -74,7 +74,7 @@ export function ConfigTransfer({
       <SettingsCard>
         <SettingsRow
           label="同步渠道与 Host 默认设置"
-          hint="保留目标 Host 已有渠道及 Workspace / Session 绑定；不传输本地绑定、工作区过滤和运行记录。同一配置复用，冲突渠道另建。"
+          hint="保留目标 Host 已有渠道及定时任务 / Workspace / Session 绑定；不传输本地绑定、工作区过滤和运行记录。同一配置复用，冲突渠道另建。"
         />
         {disabled && (
           <SettingsRow

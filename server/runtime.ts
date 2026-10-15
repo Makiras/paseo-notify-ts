@@ -398,6 +398,7 @@ export class Runtime {
       id: `${r.id}:${kind}`,
       agentId: r.agentId,
       workspaceId: r.workspaceId,
+      scheduleId: r.scheduleId,
       provider: r.provider,
       title: r.title,
       summary,
@@ -416,7 +417,10 @@ export class Runtime {
       );
     }
   }
-  async turnEnded(event: EndEvent): Promise<void> {
+  async turnEnded(
+    event: EndEvent,
+    scheduleId: string | null = null,
+  ): Promise<void> {
     if (
       this.ownedReviewers.has(event.agent.id) ||
       (event.agent.parentAgentId &&
@@ -488,6 +492,7 @@ export class Runtime {
           const base = {
             agentId: event.agent.id,
             workspaceId: event.agent.workspaceId,
+            scheduleId,
             provider: event.agent.provider,
             title: (event.agent.title ?? event.agent.id).slice(0, 200),
             createdAt: now,
@@ -664,7 +669,11 @@ export class Runtime {
       [...ids].map((id) => this.cancelAgent(id, "工作区已归档")),
     );
   }
-  async permission(agent: PluginHookAgent, requestId: string): Promise<void> {
+  async permission(
+    agent: PluginHookAgent,
+    requestId: string,
+    scheduleId: string | null = null,
+  ): Promise<void> {
     if (
       this.ownedReviewers.has(agent.id) ||
       (agent.parentAgentId && this.ownedReviewers.has(agent.parentAgentId))
@@ -685,6 +694,7 @@ export class Runtime {
         kind: "permission",
         agentId: agent.id,
         workspaceId: agent.workspaceId,
+        scheduleId,
         provider: agent.provider,
         title: (agent.title ?? agent.id).slice(0, 200),
         summary: "任务正在等待权限确认，请在 Paseo 中处理。",

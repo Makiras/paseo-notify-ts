@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { installRoutingButtons } from "../client/buttons";
 
-vi.mock("@getpaseo/plugin/client", () => ({ useSettings: vi.fn() }));
+vi.mock("@getpaseo/plugin/client", () => ({
+  useSettings: vi.fn(),
+  useAgent: vi.fn(() => null),
+}));
 vi.mock("react-native", () => ({ View: "View" }));
 vi.mock("@getpaseo/plugin/client/ui", () =>
   Object.fromEntries(

@@ -13,9 +13,14 @@ const { evaluateBundle } = await import(
 const { PluginSettingsStore } = await import(
   new URL("./settings/index.js", base).href
 );
+const { ScheduleStore } = await import(
+  new URL("../schedule/store.js", base).href
+);
 const directory = await mkdtemp(join(tmpdir(), "paseo-notifier-smoke-"));
 const previous = process.env.PASEO_NOTIFIER_STATE_DIR;
+const previousHome = process.env.PASEO_HOME;
 process.env.PASEO_NOTIFIER_STATE_DIR = join(directory, "operations");
+process.env.PASEO_HOME = directory;
 let cleanup;
 try {
   await mkdir(join(directory, "settings"));
@@ -65,6 +70,39 @@ try {
   };
   const first = await invoke("notifier.status");
   assert.equal(first.storageError, null);
+  // Use the actual host store so format drift breaks CI before deployment.
+  const tasks = new ScheduleStore(join(directory, "schedules"), {
+    error: () => assert.fail("Unexpected invalid schedule"),
+  });
+  const now = new Date().toISOString();
+  const schedule = await tasks.create({
+    name: "Daily smoke",
+    prompt: "private task prompt",
+    cadence: {
+      type: "cron",
+      expression: "0 9 * * *",
+      timezone: "Asia/Shanghai",
+    },
+    target: {
+      type: "new-agent",
+      config: { provider: "codex", cwd: directory },
+    },
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+    nextRunAt: null,
+    lastRunAt: null,
+    pausedAt: null,
+    expiresAt: null,
+    maxRuns: null,
+    runs: [],
+  });
+  const listed = await invoke("notifier.schedules.list");
+  assert.equal(listed.unreadable, 0);
+  assert.equal(listed.schedules.length, 1);
+  assert.equal(listed.schedules[0].id, schedule.id);
+  assert.equal(listed.schedules[0].timezone, "Asia/Shanghai");
+  assert.equal(JSON.stringify(listed).includes(schedule.prompt), false);
   const current = await registered.read.handle();
   assert.equal(current.status, "ready");
   assert.deepEqual(current.values.routing.host, ["legacy"]);
@@ -72,7 +110,7 @@ try {
     JSON.parse(
       await readFile(join(directory, "settings", "notifier.json"), "utf8"),
     ).version,
-    2,
+    3,
   );
   const values = {
     ...current.values,
@@ -86,9 +124,19 @@ try {
         providers: [],
         workspaceIds: [],
       },
+      {
+        id: "scheduled",
+        name: "Scheduled",
+        kind: "webhook",
+        enabled: true,
+        events: ["completed", "recovered", "failed", "permission"],
+        providers: [],
+        workspaceIds: [],
+      },
     ],
     routing: {
       host: ["local"],
+      schedules: { [schedule.id]: ["scheduled"] },
       workspaces: { workspace: ["local"] },
       sessions: {},
     },
@@ -118,6 +166,7 @@ try {
   });
   assert.equal(ordinary.text.includes("private-smoke-value"), false);
   assert.deepEqual(JSON.parse(ordinary.text).config.routing.workspaces, {});
+  assert.deepEqual(JSON.parse(ordinary.text).config.routing.schedules, {});
   const full = await invoke("notifier.config.export", {
     revision: transferSettings.revision,
     includeCredentials: true,
@@ -146,6 +195,9 @@ try {
   assert.deepEqual(imported.values.routing.workspaces, {
     workspace: ["local"],
   });
+  assert.deepEqual(imported.values.routing.schedules, {
+    [schedule.id]: ["scheduled"],
+  });
   assert.notEqual(imported.values.routing.host[0], "local");
   const privateValues = JSON.parse(
     await readFile(join(directory, "operations", "credentials.json"), "utf8"),
@@ -156,6 +208,38 @@ try {
   );
   assert.ok(hooks.has("agent.turn_ended"));
   assert.ok(hooks.has("agent.turn_started"));
+  for (const id of ["scheduled-run-one", "scheduled-run-two"]) {
+    await hooks.get("agent.turn_ended")(
+      {
+        agent: {
+          id,
+          workspaceId: id,
+          provider: "codex",
+          parentAgentId: null,
+          cwd: directory,
+          title: "Scheduled run",
+        },
+        turnId: id,
+        outcome: { kind: "completed" },
+        timeline: [],
+      },
+      {
+        paseo: {
+          agents: {
+            ref: () => ({
+              refresh: async () => ({
+                agent: { labels: { "paseo.schedule-id": schedule.id } },
+              }),
+            }),
+          },
+        },
+      },
+    );
+  }
+  const routed = await invoke("notifier.status");
+  assert.equal(routed.deliveries.length, 2);
+  assert.ok(routed.deliveries.every((d) => d.channelId === "scheduled"));
+  // This channel deliberately has no credentials: no live notifications run.
   const reviewSettings = await registered.read.handle();
   await registered.write.handle({
     revision: reviewSettings.revision,
@@ -190,6 +274,7 @@ try {
     refresh: async () => ({
       agent: {
         ...origin,
+        labels: { "paseo.schedule-id": schedule.id },
         status: submitted ? "running" : "idle",
         persistence: { sessionId: "session" },
         lastUserMessageAt: "2026-01-01",
@@ -270,13 +355,19 @@ try {
   const checked = await invoke("notifier.status");
   assert.equal(checked.recoveries.length, 1);
   assert.equal(checked.recoveries[0].reviews[0].status, "continue");
-  assert.equal(checked.deliveries.length, 0);
+  assert.equal(checked.deliveries.length, 2);
+  const operations = JSON.parse(
+    await readFile(join(directory, "operations", "operations.json"), "utf8"),
+  );
+  assert.equal(operations.recoveries[0].scheduleId, schedule.id);
   console.log(
-    "Host smoke: settings migrated; portable export and staged import validated with revision conflicts and preserved local bindings; credentials masked; isolated AI review archived before continuation, with reviewer callbacks excluded.",
+    "Host smoke: settings migrated and applied before credential writes; schedule metadata and repeated-run routing validated; portable transfer preserved local bindings; credentials masked; isolated AI review archived before continuation, with reviewer callbacks excluded.",
   );
 } finally {
   await cleanup?.();
   if (previous === undefined) delete process.env.PASEO_NOTIFIER_STATE_DIR;
   else process.env.PASEO_NOTIFIER_STATE_DIR = previous;
+  if (previousHome === undefined) delete process.env.PASEO_HOME;
+  else process.env.PASEO_HOME = previousHome;
   await rm(directory, { recursive: true, force: true });
 }

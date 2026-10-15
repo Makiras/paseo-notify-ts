@@ -32,6 +32,55 @@ function settings() {
   return c;
 }
 describe("host/workspace/session inheritance", () => {
+  it("routes successive runs by schedule ID while preserving workspace and session overrides", () => {
+    const c = settings();
+    c.routing.schedules.daily = ["hook-b"];
+    for (const run of ["first", "next"])
+      expect(
+        resolveRoute(c, {
+          agentId: run,
+          workspaceId: run,
+          scheduleId: "daily",
+        }),
+      ).toEqual({ source: "schedule", channelIds: ["hook-b"] });
+    c.routing.workspaces.w = [];
+    expect(
+      resolveRoute(c, { ...notice, scheduleId: "daily" }).channelIds,
+    ).toEqual([]);
+    c.routing.sessions.s = ["hook-a"];
+    expect(resolveRoute(c, { ...notice, scheduleId: "daily" }).source).toBe(
+      "session",
+    );
+  });
+  it("keeps muted tasks muted, restores inheritance, and removes deleted channel references", () => {
+    const c = settings();
+    c.routing.schedules.daily = [];
+    expect(notificationChannels(c, { ...notice, scheduleId: "daily" })).toEqual(
+      [],
+    );
+    delete c.routing.schedules.daily;
+    expect(resolveRoute(c, { ...notice, scheduleId: "daily" }).source).toBe(
+      "host",
+    );
+    c.routing.schedules.daily = ["hook-b"];
+    expect(withoutChannel(c, "hook-b").routing.schedules.daily).toEqual([]);
+    c.channels[1]!.enabled = false;
+    expect(notificationChannels(c, { ...notice, scheduleId: "daily" })).toEqual(
+      [],
+    );
+  });
+  it("adds schedule bindings to existing settings without changing their defaults", () => {
+    const c = settings();
+    c.routing.host = [];
+    c.routing.workspaces.w = ["hook-b"];
+    const { schedules: _unused, ...routing } = c.routing;
+    expect(migrateSettings({ ...c, routing }, 2).routing).toEqual({
+      ...routing,
+      schedules: {},
+    });
+    c.routing.schedules.daily = ["missing"];
+    expect(configSchema.safeParse(c).success).toBe(false);
+  });
   it("follows later parent changes until a child makes an explicit selection", () => {
     const c = settings();
     expect(resolveRoute(c, notice)).toEqual({
@@ -91,6 +140,7 @@ describe("host/workspace/session inheritance", () => {
     const { routing: _old, ...old } = settings();
     expect(migrateSettings(old, 1).routing).toEqual({
       host: ["hook-a", "hook-b"],
+      schedules: {},
       workspaces: {},
       sessions: {},
     });

@@ -24,10 +24,12 @@ paseo plugin install "$PWD"
 
 宿主需要启用插件。打开 **设置 → 插件 → Paseo Notifier → 通知与自动恢复**，或在命令中心搜索 `Notifier`。
 
-1. 添加渠道，选择通知事件和可选的提供方 / 工作区过滤，在「Host 默认通知渠道」中选择默认去向，点击「保存设置」。注册渠道不会自动把它加入默认选择。
-2. 按渠道填写地址、Token、目标等信息，点击「保存凭据」。
+1. 添加渠道，选择通知事件和可选的提供方 / 工作区过滤，在「Host 默认通知渠道」中选择默认去向。注册渠道不会自动把它加入默认选择。
+2. 按渠道填写地址、Token、目标等信息，点击页面上方「保存设置」：先保存渠道与通用配置，再依次保存已填写的凭据。已有渠道也可单独点击「保存凭据」。
 3. 点击「发送测试」，确认渠道收到消息。
 4. 按需开启自动继续并设置预算；需要时启用其子选项「重试前由 AI 复核」。自动继续、复核、最终回复摘要默认关闭，默认只处理主会话。
+
+渠道与凭据可以一次填写、一次保存。配置保存冲突时不提交凭据，输入继续保留；部分凭据保存失败时会列出失败渠道，成功的清空并收起，失败的保留，再点「保存设置」只重试剩余凭据。没有修改的凭据不会被空输入覆盖，仅修改凭据也能使用顶部的保存按钮。接收其他客户端的设置更新，或折叠再展开凭据区域，不会清掉尚未提交的输入。凭据草稿只保留在当前页面内存中，不写入普通设置或浏览器存储；切换 Host、离开页面或移除该渠道后不会保留。已保存的密钥不会自动回填。
 
 运行需要 Node.js 22+，生产环境没有额外依赖。修改源码后运行检查，再执行 `paseo plugin reload paseo-notifier`。本项目不会修改宿主的全局插件开关。
 
@@ -35,17 +37,48 @@ paseo plugin install "$PWD"
 
 通知按照 **Host → Workspace → Session** 继承：下级没有单独选择时，动态跟随上级；上级修改渠道后，下级的新通知自动使用新选择。关闭「跟随上级」并清空渠道表示显式关闭通知，不会回退到上级；下级仍可单独选择自己的渠道。
 
+定时任务的会话使用 **Host → Schedule → Workspace → Session**。任务绑定按稳定的 Schedule ID 保存，每次运行生成新的工作区或会话仍能使用同一组渠道；工作区和当前会话的明确选择优先。
+
 - **Host**：插件配置页注册具体接收目标并设置默认渠道，支持多选。新安装默认不选择任何渠道；已有设置升级时，将原渠道列表迁移为 Host 默认，保留原有过滤行为。
-- **Workspace**：独立的「工作区通知设置」面板，只调整当前工作区。通过命令中心「Notifier：工作区通知设置」打开。
+- **Schedule**：Host 设置页的「定时任务通知渠道」选择任务，为它多选渠道、跟随 Host 或关闭通知，然后点击「保存设置」。命令中心「Notifier：定时任务通知渠道」也可打开此配置页。
+- **Workspace**：独立的「工作区通知设置」面板，只调整当前工作区。从会话的「通知」弹层中点击「工作区通知设置 → 打开」，或通过命令中心「Notifier：工作区通知设置」进入。
 - **Session**：聊天输入区保留固定的「铃铛图标＋通知」按钮；点击后查看渠道、继承来源并选择当前会话的去向。命令中心也提供「Notifier：会话通知设置」。会话弹层只修改当前会话。
 
 目标布局是 Host 设置、原生工作区设置，以及聊天输入区的纯图标入口。当前 Paseo 的公开接口只提供工作区面板，没有原生工作区设置扩展点；输入区按钮始终显示图标与文字，省略 `label` 仍会显示 `title`。因此目前使用独立工作区设置面板和固定两字标签，渠道名及继承来源仅在点击后显示，不再向工作区顶部添加按钮。纯图标输入区入口和原生工作区设置内嵌需要宿主提供相应接口。详见 [Paseo 插件接口](https://paseo.sh/docs/plugins/reference#composer-pills)。
 
 每个渠道代表具体群组、话题或 Webhook，例如「Telegram 开发群」与「Telegram 运维群」分别注册。选中的渠道仍需通过启用状态、通知事件、提供方和工作区过滤；被过滤时不会自动转发到其他目标。复核子会话始终排除。
 
-配置只保存渠道 ID 和 Workspace / Session ID 映射，沿用 Paseo 的 Host settings 文档，不保存会话副本。设置写入使用 revision 防止并发覆盖。路由变更只影响之后入队的通知；已入队通知保留原渠道，凭据或接收地址变化会取消旧通知，避免重试发错群。凭据尚未配置导致失败的通知，可以在配置凭据后手动再次投递。
+配置只保存渠道 ID 和 Schedule / Workspace / Session ID 映射，沿用 Paseo 的 Host settings 文档，不保存会话副本。设置写入使用 revision 防止并发覆盖。路由变更只影响之后入队的通知；已入队通知保留原渠道，凭据或接收地址变化会取消旧通知，避免重试发错群。凭据尚未配置导致失败的通知，可以在配置凭据后手动再次投递。
 
-客户端按钮使用宿主目录订阅，支持分页、重连快照和卸载清理，没有会话轮询。定时任务生成的新工作区、会话同样遵守这条继承链；按定时任务 ID 设置长期绑定、以及原生任务编辑页的选择入口尚未实现。
+客户端按钮使用宿主目录订阅，支持分页、重连快照和卸载清理，没有会话轮询。任务来源通过宿主会话的 `paseo.schedule-id` 标签识别，恢复记录保留任务 ID，让后续恢复通知继续遵守任务绑定。
+
+### 打开工作区通知设置
+
+在当前会话点击输入区「通知」，再点击弹层下方「工作区通知设置 → 打开」，会关闭弹层并打开该会话所属工作区的配置面板。
+
+先进入目标 Host 的工作区，再按 macOS 的 `⌘K` 或 Windows / Linux 的 `Ctrl+K` 打开命令中心，搜索并选择「Notifier：工作区通知设置」。它会打开一个工作区标签页。保留「跟随上级」会跟随所属任务的选择，普通会话跟随 Host；关闭后可多选渠道，也可全部清空来关闭该工作区通知。选择立即保存。此命令需要当前已打开工作区，不能从没有工作区上下文的设置首页调用。参见 [Paseo 命令中心](https://paseo.sh/docs/plugins/reference#command-center-items)。
+
+### 定时任务的通知
+
+在 Paseo 的 Schedules 页面创建任务，填写仓库、提供方 / 模型、执行提示词和 cron 周期。也可通过 CLI 创建，例如每个工作日北京时间 09:00 检查项目：
+
+```sh
+paseo schedule create \
+  --name daily-check \
+  --cron "0 9 * * 1-5" \
+  --timezone Asia/Shanghai \
+  --provider codex \
+  --cwd /path/to/project \
+  "检查项目状态并汇总需要处理的问题。"
+```
+
+把提供方和目录改为该 Host 上实际可用的值。创建后可在 Schedules 中运行一次，或使用 `paseo schedule run-once <任务ID>` 验证。定时器由 Paseo 运行，Host 需要保持运行；插件负责接收任务事件并发送通知。参见 [Schedules](https://paseo.sh/docs/schedules) 和 [定时任务 CLI](https://paseo.sh/docs/schedules-cli)。
+
+先在插件 Host 设置中注册渠道、保存凭据并发送测试。随后在「定时任务通知渠道」选择刚创建的任务，关闭「跟随上级」，勾选接收渠道并点击「保存设置」。保留跟随表示使用 Host 默认；关闭跟随并清空选择表示关闭此任务的通知。新增任务未出现时点击「刷新任务列表」。运行一次任务，确认完成通知进入选定群组；仍需检查渠道的事件、提供方或工作区过滤条件。
+
+每个任务的多次运行共用该任务绑定，某次运行的 Session 选择只影响该次会话。任务改名不会丢失绑定；删除后重新创建得到新 ID，需要重新选择。列表读取失败不会清空已有绑定；列表中消失的已绑定任务仍可清理或调整。
+
+任务创建、cron、启停和手动运行仍由 Paseo Schedules 管理。公开插件 API 没有任务列表接口，也没有原生任务编辑页的扩展入口，因此选择器只在打开或手动刷新时读取当前 Host 的 `$PASEO_HOME/schedules` 元数据，不修改任务文件，不读取运行输出到客户端。它只列出创建新会话的 Schedule。Heartbeat 继续已有会话，在该会话输入区的「通知」中选择渠道。
 
 ## 跨 Host 配置导入导出
 
@@ -53,7 +86,7 @@ paseo plugin install "$PWD"
 
 默认导出渠道定义、Host 默认选择和通用恢复 / 通知设置，不含任何渠道凭据。勾选「导出包含凭据」后，才会把 Webhook 地址、Token、接收群组等一并复制为明文。普通状态查询仍不返回凭据。导入预览展示渠道名称、默认选择、自动恢复开关及凭据数量；应用成功后清空页面中的粘贴内容。
 
-跨 Host 不迁移 Workspace / Session 绑定、渠道的本机工作区过滤、运行记录、恢复预算或待投递通知。目标 Host 的已有渠道和本地绑定保留；完全相同的配置复用，有冲突的渠道创建新 ID，并重映射导入的 Host 默认选择。反复导入相同内容不会重复添加渠道。Host 默认和通用设置按导入内容更新，不含凭据的渠道仍需配置凭据。
+跨 Host 不迁移 Schedule / Workspace / Session 绑定、渠道的本机工作区过滤、运行记录、恢复预算或待投递通知。目标 Host 的已有渠道和本地绑定保留；完全相同的配置复用，有冲突的渠道创建新 ID，并重映射导入的 Host 默认选择。反复导入相同内容不会重复添加渠道。Host 默认和通用设置按导入内容更新，不含凭据的渠道仍需配置凭据。
 
 导入先验证全部内容及合并后的渠道数量，再将新凭据写入尚未被配置引用的随机 ID，最后通过 revision 保存 Host 配置。保存冲突或客户端中断时，原有配置与渠道凭据不被覆盖；可能留下未引用的私有凭据记录，不会触发通知，也不会被导出。导入不会自动发送测试消息。当前为手动复制同步，不在 Host 之间建立后台同步连接。
 
@@ -110,7 +143,7 @@ Codex 使用公开的 `auto` 模式配合只读 sandbox、禁用网页搜索及�
 
 ## Webhook 协议
 
-通用 Webhook 使用 JSON POST，字段为 `schema: "paseo-notifier/v1"`、`id`、`kind`、`agentId`、`workspaceId`、`provider`、`title`、`summary`、可选的 `preview`、`attempts`、`createdAt` 和 `text`。时间为 Unix 毫秒。事件种类为 `completed`、`recovered`、`failed`、`blocked`、`permission`、`test`。
+通用 Webhook 使用 JSON POST，字段为 `schema: "paseo-notifier/v1"`、`id`、`kind`、`agentId`、`workspaceId`、可选的 `scheduleId`、`provider`、`title`、`summary`、可选的 `preview`、`attempts`、`createdAt` 和 `text`。时间为 Unix 毫秒。事件种类为 `completed`、`recovered`、`failed`、`blocked`、`permission`、`test`。
 
 - `Idempotency-Key`、`X-Paseo-Event-Id`：稳定事件 ID，用于接收方去重。
 - `X-Paseo-Timestamp`：请求时间，Unix 秒。
@@ -142,19 +175,27 @@ Codex 使用公开的 `auto` 模式配合只读 sandbox、禁用网页搜索及�
 3. 离线期间的生命周期事件不会重放。已入队通知可以恢复，未收到的完成事件无法保证补发。重启后发现执行已结束但缺少终止事件时，提示检查结果，不把空闲当成成功。
 4. HTTP 回执丢失时重试可能重复通知，不能保证恰好一次。通用 Webhook 可按事件 ID 去重。
 5. 用户消息边界缺失、历史分页被替换或状态无法核对时，停止自动继续。
+6. 任务通知来自会话生命周期事件；在创建会话之前发生的调度失败没有这类事件，插件无法通知。任务列表读取依赖宿主本地元数据格式；异常文件会单独提示，不影响其他任务的配置。
 
 ## 开发与验证
 
 `shared/` 定义 Zod 配置和 RPC；`client/` 包含原生设置页与时间线卡片；`server/` 包含分类、纯重试策略、调度器、宿主适配、通知传输和存储。
 
-`npm run check` 执行类型检查、测试和双端构建。测试覆盖预算、去重、取消竞争、回执丢失、重启、平台错误码、本地 HTTP、存储、配置草稿冲突，以及审查创建、决策校验、取消、超时、并发上限、递归抑制和过期结论作废。错误样例、AI 结果和宿主状态由测试构造；真实提供方和通知账户需要实际凭据联调。配置页尚未在真实手机上人工验收。
+`npm run check` 执行类型检查、测试和双端构建。测试覆盖预算、去重、取消竞争、回执丢失、重启、平台错误码、本地 HTTP、存储、配置草稿冲突、凭据草稿保留、定时任务多次运行的渠道绑定，以及审查创建、决策校验、取消、超时、并发上限、递归抑制和过期结论作废。错误样例、AI 结果和宿主状态由测试构造；真实提供方和通知账户需要实际凭据联调。配置页尚未在真实手机上人工验收。
 
-可使用已安装的宿主编译器做隔离加载验证，无需修改 daemon：
+GitHub Actions 的 [Checks](https://github.com/Makiras/paseo-notify-ts/actions/workflows/ci.yml) 在推送 `main`、Pull Request 或手动触发时运行。Node.js 22 / 24 分别执行锁文件安装、类型检查、测试、官方宿主编译、插件加载与 RPC 冒烟测试，以及隔离解包后的再次编译。检查通过会上传 `.tgz` 安装包及 SHA-256 校验文件，可从该次运行的 Artifacts 下载。CI 不需要通知凭据或模型账户。
+
+本地可复现同样的验证，宿主编译器会下载到忽略的 `.build/host`，无需修改 daemon：
 
 ```sh
-PASEO_COMPILER_PATH=/path/to/server/plugins/compiler.js npm run build:check
-PASEO_COMPILER_PATH=/path/to/server/plugins/compiler.js node scripts/host-smoke.mjs
-PASEO_COMPILER_PATH=/path/to/server/plugins/compiler.js npm run package:check
+npm ci --ignore-scripts
+npm run host:prepare
+export PASEO_COMPILER_PATH="$PWD/.build/host/package/dist/server/server/plugins/compiler.js"
+npm run check
+npm run host:smoke
+npm run package
 ```
+
+`npm run package` 将验证通过的安装包和校验文件保存在 `dist/`；`npm run package:check` 只验证临时包。也可将 `PASEO_COMPILER_PATH` 指向已安装宿主的编译器。
 
 接口依据：[Paseo 插件](https://paseo.sh/docs/plugins/reference)、[Paseo SDK](https://paseo.sh/docs/sdk/reference)、[独立代理与结构化输出](https://paseo.sh/docs/sdk/agents)、[提供方选项](https://paseo.sh/docs/sdk/provider-options)、[飞书机器人](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot)、[企业微信机器人](https://developer.work.weixin.qq.com/document/path/91770)、[Telegram Bot API](https://core.telegram.org/bots/api#sendmessage)、[钉钉加签](https://open.dingtalk.com/document/robots/customize-robot-security-settings)、[Bark](https://github.com/Finb/Bark/blob/master/docs/en-us/tutorial.md)、[ntfy](https://docs.ntfy.sh/publish/)、[Slack Webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)、[Discord Webhook](https://docs.discord.com/developers/resources/webhook#execute-webhook)。

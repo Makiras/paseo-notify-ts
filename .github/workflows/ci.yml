@@ -1,0 +1,47 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    env:
+      PASEO_COMPILER_PATH: ${{ github.workspace }}/.build/host/package/dist/server/server/plugins/compiler.js
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run host:prepare
+      - run: npm run check
+      - run: npm run host:smoke
+      - run: npm run package
+      - uses: actions/upload-artifact@v7.0.2
+        if: matrix.node == 22
+        with:
+          name: paseo-notify-ts
+          path: |
+            dist/*.tgz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14

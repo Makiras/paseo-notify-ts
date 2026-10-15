@@ -2,7 +2,7 @@ import type {
   PluginButtonRegistration,
   PluginClientContext,
 } from "@getpaseo/plugin/client";
-import { RoutingPanel } from "./routing";
+import { createRoutingPanel } from "./routing";
 
 type Target = { id: string; workspaceId: string; agentId: string };
 type Page = { pageInfo: { nextCursor: string | null; hasMore: boolean } };
@@ -126,6 +126,7 @@ export function watchDirectory<T extends Page>(options: {
 }
 
 export function installRoutingButtons(client: PluginClientContext) {
+  const RoutingPanel = createRoutingPanel(client);
   const registrations = new Map<
     string,
     { target: Target; button: PluginButtonRegistration }

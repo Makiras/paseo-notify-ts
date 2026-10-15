@@ -20,6 +20,7 @@ import {
 export const recoverySchema = recoveryCardSchema.extend({
   provider: z.string(),
   workspaceId: z.string().nullable(),
+  scheduleId: z.string().nullable().optional(),
   failure: failureKindSchema,
   startedAt: z.number(),
   fingerprint: z.string(),

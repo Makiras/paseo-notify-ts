@@ -49,7 +49,7 @@ const selectionSchema = z
   .refine((ids) => new Set(ids).size === ids.length, {
     message: "通知渠道不能重复",
   });
-const scopeIdSchema = z
+export const scopeIdSchema = z
   .string()
   .min(1)
   .max(256)
@@ -70,6 +70,9 @@ const scopeSelections = z
 export const routingSchema = z.object({
   host: selectionSchema.default([]),
   // Missing key means inheritance; an explicit [] means muted.
+  schedules: scopeSelections
+    .default({})
+    .refine((v) => Object.keys(v).length <= 1000, "定时任务绑定过多"),
   workspaces: scopeSelections
     .default({})
     .refine((v) => Object.keys(v).length <= 1000, "工作区绑定过多"),
@@ -159,6 +162,7 @@ export const configSchema = z
     const known = new Set(v.channels.map((c) => c.id));
     for (const ids of [
       v.routing.host,
+      ...Object.values(v.routing.schedules),
       ...Object.values(v.routing.workspaces),
       ...Object.values(v.routing.sessions),
     ]) {
@@ -175,16 +179,17 @@ export const configSchema = z
 export type Config = z.infer<typeof configSchema>;
 export const defaultConfig = (): Config => configSchema.parse({});
 export function migrateSettings(values: unknown, fromVersion: number): Config {
-  if (fromVersion !== 1) throw new Error("不支持的设置格式");
+  if (fromVersion !== 1 && fromVersion !== 2)
+    throw new Error("不支持的设置格式");
   const config = configSchema.parse(values);
   // Preserve the previous fan-out for existing installations only.
-  config.routing.host = config.channels.map((c) => c.id);
+  if (fromVersion === 1) config.routing.host = config.channels.map((c) => c.id);
   return config;
 }
 export const preferences = defineSettings({
   id: "notifier",
   scope: "host",
-  version: 2,
+  version: 3,
   schema: configSchema,
   migrate: migrateSettings,
 });

@@ -34,6 +34,9 @@
     "check": "npm run typecheck && npm test && npm run build:check",
     "build:check": "node scripts/build-check.mjs",
     "package:check": "node scripts/package-check.mjs",
+    "package": "node scripts/package-check.mjs --keep",
+    "host:prepare": "node scripts/prepare-host.mjs",
+    "host:smoke": "node scripts/host-smoke.mjs",
     "format": "prettier --write index.* shared server client scripts tests *.json *.md"
   },
   "devDependencies": {

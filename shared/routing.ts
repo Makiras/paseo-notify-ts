@@ -4,9 +4,10 @@ import type { Notification } from "./contracts";
 export type RouteContext = {
   workspaceId?: string | null;
   agentId?: string | null;
+  scheduleId?: string | null;
 };
 export type ResolvedRoute = {
-  source: "host" | "workspace" | "session";
+  source: "host" | "schedule" | "workspace" | "session";
   channelIds: string[];
 };
 
@@ -27,6 +28,14 @@ export function resolveRoute(
     return {
       source: "workspace",
       channelIds: [...routing.workspaces[context.workspaceId]!],
+    };
+  if (
+    context.scheduleId &&
+    Object.hasOwn(routing.schedules, context.scheduleId)
+  )
+    return {
+      source: "schedule",
+      channelIds: [...routing.schedules[context.scheduleId]!],
     };
   return { source: "host", channelIds: [...routing.host] };
 }
@@ -58,7 +67,11 @@ export function withoutChannel(config: Config, id: string): Config {
   next.channels = next.channels.filter((c) => c.id !== id);
   const remove = (ids: string[]) => ids.filter((value) => value !== id);
   next.routing.host = remove(next.routing.host);
-  for (const selections of [next.routing.workspaces, next.routing.sessions])
+  for (const selections of [
+    next.routing.schedules,
+    next.routing.workspaces,
+    next.routing.sessions,
+  ])
     for (const key of Object.keys(selections))
       selections[key] = remove(selections[key]!);
   return next;
@@ -66,9 +79,12 @@ export function withoutChannel(config: Config, id: string): Config {
 
 export function routeLabel(config: Config, context: RouteContext): string {
   const route = resolveRoute(config, context);
-  const source = { host: "Host", workspace: "Workspace", session: "Session" }[
-    route.source
-  ];
+  const source = {
+    host: "Host",
+    schedule: "定时任务",
+    workspace: "Workspace",
+    session: "Session",
+  }[route.source];
   const names = route.channelIds.map(
     (id) => config.channels.find((c) => c.id === id)?.name ?? id,
   );

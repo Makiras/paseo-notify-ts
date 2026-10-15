@@ -8,6 +8,7 @@ describe("portable configuration transfer", () => {
   it("omits secrets, local bindings and host-specific filters by default", () => {
     const c = config();
     c.routing.workspaces.local = ["hook-a"];
+    c.routing.schedules.daily = ["hook-a"];
     c.routing.sessions.private = [];
     c.channels[0]!.workspaceIds = ["local"];
     const text = exportConfiguration(c, memory().secrets.read(), false);
@@ -15,6 +16,7 @@ describe("portable configuration transfer", () => {
     expect(bundle.credentials).toBeUndefined();
     expect(bundle.config.routing).toEqual({
       host: ["hook-a"],
+      schedules: {},
       workspaces: {},
       sessions: {},
     });
@@ -36,6 +38,7 @@ describe("portable configuration transfer", () => {
     const current = config(),
       secrets = memory().secrets.read();
     current.routing.sessions.local = ["hook-a"];
+    current.routing.schedules.daily = [];
     const incoming = parseTransfer(
       exportConfiguration(config(), secrets, true),
     );
@@ -44,6 +47,7 @@ describe("portable configuration transfer", () => {
     const result = planImport(current, secrets, incoming, () => "import-new");
     expect(result.config.routing.host).toEqual(["import-new"]);
     expect(result.config.routing.sessions.local).toEqual(["hook-a"]);
+    expect(result.config.routing.schedules.daily).toEqual([]);
     expect(result.staged["hook-a"]).toBeUndefined();
     expect(result.staged["import-new"]!.values.url).toContain("other-group");
     expect(result.added).toBe(1);

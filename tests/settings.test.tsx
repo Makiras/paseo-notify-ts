@@ -9,6 +9,7 @@ import { configSchema, defaultConfig } from "../shared/config";
 
 const host = vi.hoisted(() => ({
   settings: undefined as unknown,
+  schedules: vi.fn(async () => ({ schedules: [], unreadable: 0 })),
   rpc: vi.fn(async () => ({
     connected: true,
     settingsError: null,
@@ -20,7 +21,8 @@ const host = vi.hoisted(() => ({
 }));
 vi.mock("@getpaseo/plugin/client", () => ({
   useSettings: () => host.settings,
-  useRpc: () => host.rpc,
+  useRpc: (rpc: { name: string }) =>
+    rpc.name === "notifier.schedules.list" ? host.schedules : host.rpc,
 }));
 vi.mock("@getpaseo/plugin/client/ui", () =>
   Object.fromEntries(
@@ -31,6 +33,7 @@ vi.mock("@getpaseo/plugin/client/ui", () =>
       "SettingsRow",
       "SettingsSection",
       "SettingsSwitch",
+      "SettingsSelect",
     ].map((key) => [key, key]),
   ),
 );

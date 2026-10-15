@@ -21,12 +21,14 @@ import {
   parseTransfer,
 } from "./shared/transfer";
 import { exportConfiguration, planImport } from "./server/transfer";
+import { listSchedulesRpc } from "./shared/schedules";
+import { listSchedules, resolveAgentSchedule } from "./server/schedules";
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(preferences);
+  const paseoHome = process.env.PASEO_HOME ?? join(homedir(), ".paseo");
   const directory =
-    process.env.PASEO_NOTIFIER_STATE_DIR ??
-    join(process.env.PASEO_HOME ?? join(homedir(), ".paseo"), "notifier");
+    process.env.PASEO_NOTIFIER_STATE_DIR ?? join(paseoHome, "notifier");
   let stopped = false;
   let bootError: string | null = null;
   const ready = (async () => {
@@ -74,18 +76,39 @@ export default function contribute(server: PluginServerContext) {
     fn: (runtime: Runtime) => Promise<T> | T,
   ): Promise<T> {
     const runtime = await ready;
+    // The host acknowledges settings writes before async subscribers finish.
+    // A following credential RPC or hook must see the acknowledged config.
+    await configUpdates;
     if (stopped) throw new Error("插件已停止");
     runtime.connect(paseoPort(paseo));
     return fn(runtime);
   }
+  async function scheduleFor(paseo: PaseoApi, agentId: string) {
+    const state = await settings.read();
+    if (
+      state.status !== "ready" ||
+      !Object.keys(state.values.routing.schedules).length
+    )
+      return null;
+    return resolveAgentSchedule(paseo, agentId);
+  }
+  server.handle(listSchedulesRpc, () => listSchedules(paseoHome));
   server.on("agent.turn_ended", (event, ctx) =>
-    run(ctx.paseo, (r) => r.turnEnded(event)),
+    run(ctx.paseo, async (r) =>
+      r.turnEnded(event, await scheduleFor(ctx.paseo, event.agent.id)),
+    ),
   );
   server.on("agent.turn_started", (event, ctx) =>
     run(ctx.paseo, (r) => r.turnStarted(event.agent.id)),
   );
   server.on("agent.permission_requested", (event, ctx) =>
-    run(ctx.paseo, (r) => r.permission(event.agent, event.request.id)),
+    run(ctx.paseo, async (r) =>
+      r.permission(
+        event.agent,
+        event.request.id,
+        await scheduleFor(ctx.paseo, event.agent.id),
+      ),
+    ),
   );
   server.on("agent.archived", (event, ctx) =>
     run(ctx.paseo, (r) => r.cancelAgent(event.agent.id, "会话已归档")),
