@@ -130,7 +130,11 @@ function Editor({
   const [formKey, setFormKey] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
+  const [credentials, setCredentials] = useState<RuntimeStatus["credentials"]>(
+    [],
+  );
   const [statusError, setStatusError] = useState<string | null>(null);
+  const statusRequest = useRef(0);
   const saving = useRef(false);
   const [savingAll, setSavingAll] = useState(false);
   const credentialEditors = useRef(new Map<string, CredentialEditorHandle>());
@@ -166,35 +170,46 @@ function Editor({
   const readStatus = useRpc(statusRpc),
     removeCredentials = useRpc(deleteCredentialsRpc);
   const refresh = useCallback(async () => {
+    const request = ++statusRequest.current;
     try {
-      setStatus(await readStatus({}));
+      const next = await readStatus({});
+      if (!mounted.current || request !== statusRequest.current) return;
+      setStatus(next);
+      // The server's unavailable-state response contains an empty placeholder,
+      // not evidence that credentials were removed after a confirmed save.
+      if (!next.storageError) setCredentials(next.credentials);
       setStatusError(null);
     } catch {
-      setStatusError("无法读取运行状态");
+      if (mounted.current && request === statusRequest.current)
+        setStatusError("无法读取运行状态");
     }
   }, [readStatus]);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const update = async () => {
-      try {
-        const next = await readStatus({});
-        if (active) {
-          setStatus(next);
-          setStatusError(null);
-        }
-      } catch {
-        if (active) setStatusError("无法读取运行状态");
-      } finally {
-        if (active) timer = setTimeout(() => void update(), 5000);
-      }
+      await refresh();
+      if (active) timer = setTimeout(() => void update(), 5000);
     };
     void update();
     return () => {
       active = false;
       clearTimeout(timer);
+      statusRequest.current++;
     };
-  }, [readStatus]);
+  }, [refresh]);
+  function credentialsSaved(channel: Config["channels"][number]) {
+    if (!mounted.current) return;
+    // A successful write is authoritative; a status read started before it
+    // must not turn the test button off when its older snapshot arrives.
+    statusRequest.current++;
+    setCredentials((current) => [
+      ...current.filter((c) => c.id !== channel.id),
+      { id: channel.id, kind: channel.kind, configured: true },
+    ]);
+    // The unified save refreshes once after all writes and removals finish.
+    if (!saving.current) void refresh();
+  }
   useEffect(() => {
     if (!dirty && settings.revision !== revision) {
       setDraft(settings.values);
@@ -281,7 +296,9 @@ function Editor({
           .filter(Boolean)
           .join(" "),
       );
-      await refresh();
+      // Refresh in the background; confirmed saves do not depend on another
+      // network round trip before the user can test their saved channel.
+      void refresh();
     } catch {
       setFeedback("保存设置失败，已保留输入，请检查连接后重试");
     } finally {
@@ -441,11 +458,12 @@ function Editor({
                 saved={settings.values.channels.some(
                   (c) => c.id === channel.id && c.kind === channel.kind,
                 )}
-                configured={
-                  status?.credentials.some(
-                    (c) => c.id === channel.id && c.kind === channel.kind,
-                  ) ?? false
-                }
+                configured={credentials.some(
+                  (c) =>
+                    c.id === channel.id &&
+                    c.kind === channel.kind &&
+                    c.configured,
+                )}
                 onChange={(next) =>
                   patch({
                     channels: draft.channels.map((c) =>
@@ -454,6 +472,7 @@ function Editor({
                   })
                 }
                 onRemove={() => patch(withoutChannel(draft, channel.id))}
+                onCredentialsSaved={() => credentialsSaved(channel)}
                 onCredentialsChanged={() => void refresh()}
               />
             </SettingsPanel>

@@ -50,11 +50,13 @@ vi.mock("@getpaseo/plugin/client/ui", async () => {
       initialValue = "",
       label,
       disabled,
+      secureTextEntry,
       onChangeText,
     }: {
       initialValue?: string;
       label: string;
       disabled?: boolean;
+      secureTextEntry?: boolean;
       onChangeText(value: string): void;
     }) {
       const [value, setValue] = React.useState(initialValue);
@@ -62,6 +64,7 @@ vi.mock("@getpaseo/plugin/client/ui", async () => {
         name: label,
         value,
         disabled,
+        secureTextEntry,
         onChangeText: (text: string) => {
           if (disabled) return;
           setValue(text);
@@ -123,6 +126,7 @@ beforeEach(() => {
   host.settings = state;
   host.schedules.mockResolvedValue({ schedules: [], unreadable: 0 });
   host.status.mockImplementation(async () => structuredClone(status));
+  host.test.mockResolvedValue({ ok: true, message: "平台已接受测试通知" });
   host.write.mockImplementation(async ({ id, kind }) => {
     status.credentials = [
       ...status.credentials.filter((c) => c.id !== id),
@@ -173,7 +177,7 @@ async function click(label: string) {
     renderer.root.findByProps({ actionLabel: label }).props.onPress(),
   );
 }
-function savedChannel(kind: "webhook" | "telegram" = "webhook") {
+function savedChannel(kind: "webhook" | "telegram" | "ntfy" = "webhook") {
   state.values.channels = [
     channelSchema.parse({ id: "channel-a", name: "My channel", kind }),
   ];
@@ -192,6 +196,134 @@ function acceptSettings() {
 }
 
 describe("credential drafts across settings refreshes", () => {
+  it.each(["保存凭据", "保存设置"])(
+    "enables ntfy testing after %s while status refresh is still pending",
+    async (action) => {
+      savedChannel("ntfy");
+      acceptSettings();
+      await render();
+      let finishRefresh!: (value: RuntimeStatus) => void;
+      host.status.mockImplementationOnce(
+        () =>
+          new Promise<RuntimeStatus>((resolve) => {
+            finishRefresh = resolve;
+          }),
+      );
+      await act(async () =>
+        input("Topic").props.onChangeText("private-notifications"),
+      );
+      await click(action);
+      expect(host.status).toHaveBeenCalledTimes(2);
+      expect(
+        renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+      ).toBe(false);
+      await click("发送测试");
+      expect(host.test).toHaveBeenCalledWith({ id: "channel-a" });
+      await act(async () => finishRefresh(structuredClone(status)));
+    },
+  );
+
+  it.each(["network", "runtime"])(
+    "refreshes after saving a new ntfy channel and keeps it testable on a %s refresh error",
+    async (failure) => {
+      acceptSettings();
+      await render();
+      await select("新渠道平台", "ntfy");
+      await click("添加渠道");
+      await act(async () =>
+        input("Topic").props.onChangeText("private-notifications"),
+      );
+      expect(
+        renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+      ).toBe(true);
+      if (failure === "network")
+        host.status.mockRejectedValueOnce(new Error("Offline"));
+      else
+        host.status.mockResolvedValueOnce({
+          ...status,
+          credentials: [],
+          storageError: "插件暂不可用",
+        });
+      await click("保存设置");
+      expect(host.status).toHaveBeenCalledTimes(2);
+      expect(renderer.root.findByProps({ label: "保存结果" }).props.hint).toBe(
+        "设置和凭据已保存",
+      );
+      expect(
+        renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+      ).toBe(false);
+      expect(renderer.root.findByProps({ label: "编辑渠道" }).props.value).toBe(
+        state.values.channels[0]!.id,
+      );
+      expect(renderer.root.findByProps({ label: "更新凭据" }).props.value).toBe(
+        false,
+      );
+      await click("发送测试");
+      expect(host.test).toHaveBeenCalledWith({
+        id: state.values.channels[0]!.id,
+      });
+    },
+  );
+
+  it("reflects credentials removed by a later successful refresh", async () => {
+    savedChannel("ntfy");
+    await render();
+    await act(async () =>
+      input("Topic").props.onChangeText("private-notifications"),
+    );
+    await click("保存凭据");
+    expect(
+      renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+    ).toBe(false);
+    status.credentials = [];
+    await select("设置栏目", "activity");
+    await click("刷新");
+    await select("设置栏目", "channels");
+    expect(
+      renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+    ).toBe(true);
+  });
+
+  it("does not let a pre-save status response disable a newly saved ntfy channel", async () => {
+    savedChannel("ntfy");
+    const stale = structuredClone(status);
+    let finishOldRead!: (value: RuntimeStatus) => void;
+    host.status.mockImplementationOnce(
+      () =>
+        new Promise<RuntimeStatus>((resolve) => {
+          finishOldRead = resolve;
+        }),
+    );
+    await render();
+    await act(async () =>
+      input("Topic").props.onChangeText("private-notifications"),
+    );
+    await click("保存凭据");
+    expect(
+      renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+    ).toBe(false);
+    await act(async () => finishOldRead(stale));
+    expect(
+      renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+    ).toBe(false);
+  });
+
+  it.each(["ntfy", "telegram"] as const)(
+    "shows the %s service address while masking its target and token",
+    async (kind) => {
+      savedChannel(kind);
+      await render();
+      expect(input("服务根地址").props.secureTextEntry).not.toBe(true);
+      expect(
+        input(kind === "ntfy" ? "Topic" : "Chat ID").props.secureTextEntry,
+      ).toBe(true);
+      expect(
+        input(kind === "ntfy" ? "Bearer Token（可选）" : "Bot Token").props
+          .secureTextEntry,
+      ).toBe(true);
+    },
+  );
+
   it("preserves visible text across sections and channels, then saves all hidden drafts", async () => {
     savedChannel();
     state.values.channels.push(

@@ -38,6 +38,7 @@ type ChannelEditorProps = {
   onCredentialState: (id: string, dirty: boolean, busy: boolean) => void;
   onChange: (value: Channel) => void;
   onRemove: () => void;
+  onCredentialsSaved: () => void;
   onCredentialsChanged: () => void;
 };
 
@@ -54,6 +55,7 @@ export const ChannelEditor = forwardRef<
     onCredentialState,
     onChange,
     onRemove,
+    onCredentialsSaved,
     onCredentialsChanged,
   },
   ref,
@@ -127,7 +129,7 @@ export const ChannelEditor = forwardRef<
       clearDraft();
       setShowSecrets(false);
       setFeedback("凭据已保存");
-      onCredentialsChanged();
+      onCredentialsSaved();
       return true;
     } catch (e) {
       setFeedback(e instanceof Error ? e.message : "凭据保存失败");
@@ -254,7 +256,7 @@ export const ChannelEditor = forwardRef<
                         ? "可改为自建 Bot API 服务地址"
                         : undefined
                 }
-                secureTextEntry
+                secureTextEntry={!["telegram", "ntfy"].includes(channel.kind)}
                 initialValue={url}
                 disabled={locked}
                 placeholder="https://…"
@@ -335,7 +337,13 @@ export const ChannelEditor = forwardRef<
         )}
         <SettingsAction
           label="测试通知"
-          hint="立即发送一条测试消息到此渠道"
+          hint={
+            !saved
+              ? "先点击页面上方的保存设置，保存此渠道和填写的凭据"
+              : !configured
+                ? "请先填写并保存此渠道的连接信息"
+                : "立即使用已保存的凭据发送一条测试消息"
+          }
           actionLabel={busy ? "处理中…" : "发送测试"}
           disabled={locked || !saved || !configured}
           onPress={async () => {
