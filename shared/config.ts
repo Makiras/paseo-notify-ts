@@ -43,9 +43,44 @@ export const failureKindSchema = z.enum([
 export type FailureKind = z.infer<typeof failureKindSchema>;
 export type NoticeKind = z.infer<typeof noticeKindSchema>;
 export const channelIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,47}$/);
+const selectionSchema = z
+  .array(channelIdSchema)
+  .max(20)
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: "通知渠道不能重复",
+  });
+const scopeIdSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((id) => !["__proto__", "constructor", "prototype"].includes(id));
+const scopeSelections = z
+  .unknown()
+  .superRefine((value, ctx) => {
+    if (
+      value &&
+      typeof value === "object" &&
+      Object.keys(value).some((key) =>
+        ["__proto__", "constructor", "prototype"].includes(key),
+      )
+    )
+      ctx.addIssue({ code: "custom", message: "无效的绑定标识" });
+  })
+  .pipe(z.record(scopeIdSchema, selectionSchema));
+export const routingSchema = z.object({
+  host: selectionSchema.default([]),
+  // Missing key means inheritance; an explicit [] means muted.
+  workspaces: scopeSelections
+    .default({})
+    .refine((v) => Object.keys(v).length <= 1000, "工作区绑定过多"),
+  sessions: scopeSelections
+    .default({})
+    .refine((v) => Object.keys(v).length <= 5000, "会话绑定过多"),
+});
 
 export const channelSchema = z.object({
   id: channelIdSchema,
+  originId: channelIdSchema.optional(),
   name: z.string().trim().min(1).max(80),
   kind: channelKindSchema,
   enabled: z.boolean().default(true),
@@ -114,18 +149,44 @@ export const configSchema = z
       })
       .prefault({}),
     channels: z.array(channelSchema).max(20).default([]),
+    routing: routingSchema.prefault({}),
   })
   .refine(
     (v) => new Set(v.channels.map((c) => c.id)).size === v.channels.length,
     { message: "渠道 ID 不能重复", path: ["channels"] },
-  );
+  )
+  .superRefine((v, ctx) => {
+    const known = new Set(v.channels.map((c) => c.id));
+    for (const ids of [
+      v.routing.host,
+      ...Object.values(v.routing.workspaces),
+      ...Object.values(v.routing.sessions),
+    ]) {
+      if (ids.some((id) => !known.has(id))) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["routing"],
+          message: "通知选择包含不存在的渠道",
+        });
+        break;
+      }
+    }
+  });
 export type Config = z.infer<typeof configSchema>;
 export const defaultConfig = (): Config => configSchema.parse({});
+export function migrateSettings(values: unknown, fromVersion: number): Config {
+  if (fromVersion !== 1) throw new Error("不支持的设置格式");
+  const config = configSchema.parse(values);
+  // Preserve the previous fan-out for existing installations only.
+  config.routing.host = config.channels.map((c) => c.id);
+  return config;
+}
 export const preferences = defineSettings({
   id: "notifier",
   scope: "host",
-  version: 1,
+  version: 2,
   schema: configSchema,
+  migrate: migrateSettings,
 });
 
 export const failureLabels: Record<FailureKind, string> = {

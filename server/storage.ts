@@ -33,6 +33,7 @@ export const deliverySchema = z.object({
   id: z.string(),
   channelId: z.string(),
   channelKind: channelKindSchema,
+  credentialsHash: z.string().optional(),
   notice: notificationSchema,
   phase: z.enum(["pending", "sent", "failed", "canceled"]),
   attempts: z.number(),

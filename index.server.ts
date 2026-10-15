@@ -15,6 +15,12 @@ import {
 import { Storage } from "./server/storage";
 import { Runtime } from "./server/runtime";
 import { paseoPort } from "./server/paseo";
+import {
+  exportConfigRpc,
+  prepareImportRpc,
+  parseTransfer,
+} from "./shared/transfer";
+import { exportConfiguration, planImport } from "./server/transfer";
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(preferences);
@@ -131,6 +137,35 @@ export default function contribute(server: PluginServerContext) {
   server.handle(retryDeliveryRpc, (input, ctx) =>
     run(ctx.paseo, async (r) => ({ ok: await r.retryDelivery(input.id) })),
   );
+  server.handle(exportConfigRpc, async (input, ctx) => {
+    const current = await settings.read();
+    if (current.status !== "ready" || current.revision !== input.revision)
+      throw new Error("配置已变化，请重新读取设置再导出");
+    return run(ctx.paseo, (r) => ({
+      text: exportConfiguration(
+        current.values,
+        r.storage.secrets.read(),
+        input.includeCredentials,
+      ),
+    }));
+  });
+  server.handle(prepareImportRpc, async (input, ctx) => {
+    const incoming = parseTransfer(input.text);
+    const current = await settings.read();
+    if (current.status !== "ready" || current.revision !== input.revision)
+      throw new Error("配置已变化，请重新读取设置再导入");
+    return run(ctx.paseo, async (r) => {
+      const { staged, ...plan } = planImport(
+        current.values,
+        r.storage.secrets.read(),
+        incoming,
+      );
+      // Credentials are private and unreachable until the client saves this exact
+      // document with the captured revision. A conflict never reroutes live work.
+      await r.stageImportCredentials(staged);
+      return { ...plan, revision: current.revision };
+    });
+  });
   return async () => {
     stopped = true;
     await unsubscribe();

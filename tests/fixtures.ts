@@ -40,6 +40,7 @@ export function config() {
   value.channels = [
     channelSchema.parse({ id: "hook-a", name: "Webhook", kind: "webhook" }),
   ];
+  value.routing.host = ["hook-a"];
   return value;
 }
 export class MemoryFile<T> {

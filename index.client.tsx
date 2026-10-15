@@ -2,6 +2,8 @@ import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { Settings } from "./client/settings";
 import { RecoveryCard } from "./client/recovery-card";
 import { recoveryCardSchema } from "./shared/contracts";
+import { RoutingPanel } from "./client/routing";
+import { installRoutingButtons } from "./client/buttons";
 
 export default function contribute(client: PluginClientContext) {
   client.addSettingsScreen({
@@ -23,5 +25,33 @@ export default function contribute(client: PluginClientContext) {
     context: "global",
     onSelect: ({ openSettings }) => openSettings("settings"),
   });
-  return () => {};
+  client.addWorkspacePanel({
+    id: "workspace-routing",
+    title: "通知渠道",
+    icon: "BellRing",
+    context: "workspace",
+    Component: RoutingPanel,
+  });
+  client.addWorkspacePanel({
+    id: "session-routing",
+    title: "通知渠道",
+    icon: "BellRing",
+    context: "agent",
+    Component: RoutingPanel,
+  });
+  client.addCommandCenterItem({
+    id: "workspace-routing",
+    title: "Notifier：工作区通知渠道",
+    icon: "BellRing",
+    context: "workspace",
+    onSelect: ({ openPanel }) => openPanel("workspace-routing"),
+  });
+  client.addCommandCenterItem({
+    id: "session-routing",
+    title: "Notifier：会话通知渠道",
+    icon: "BellRing",
+    context: "agent",
+    onSelect: ({ openPanel }) => openPanel("session-routing"),
+  });
+  return installRoutingButtons(client);
 }

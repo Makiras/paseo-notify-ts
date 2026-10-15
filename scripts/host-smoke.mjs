@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,6 +18,18 @@ const previous = process.env.PASEO_NOTIFIER_STATE_DIR;
 process.env.PASEO_NOTIFIER_STATE_DIR = join(directory, "operations");
 let cleanup;
 try {
+  await mkdir(join(directory, "settings"));
+  await writeFile(
+    join(directory, "settings", "notifier.json"),
+    JSON.stringify({
+      version: 1,
+      values: {
+        channels: [
+          { id: "legacy", name: "Legacy", kind: "webhook", enabled: false },
+        ],
+      },
+    }),
+  );
   const contribute = evaluateBundle(
     await readFile(".build/host-server.js", "utf8"),
   );
@@ -55,6 +67,13 @@ try {
   assert.equal(first.storageError, null);
   const current = await registered.read.handle();
   assert.equal(current.status, "ready");
+  assert.deepEqual(current.values.routing.host, ["legacy"]);
+  assert.equal(
+    JSON.parse(
+      await readFile(join(directory, "settings", "notifier.json"), "utf8"),
+    ).version,
+    2,
+  );
   const values = {
     ...current.values,
     channels: [
@@ -68,6 +87,11 @@ try {
         workspaceIds: [],
       },
     ],
+    routing: {
+      host: ["local"],
+      workspaces: { workspace: ["local"] },
+      sessions: {},
+    },
   };
   const saved = await registered.write.handle({
     revision: current.revision,
@@ -87,6 +111,49 @@ try {
   const status = await invoke("notifier.status");
   assert.equal(status.credentials[0].configured, true);
   assert.equal(JSON.stringify(status).includes("private-smoke-value"), false);
+  const transferSettings = await registered.read.handle();
+  const ordinary = await invoke("notifier.config.export", {
+    revision: transferSettings.revision,
+    includeCredentials: false,
+  });
+  assert.equal(ordinary.text.includes("private-smoke-value"), false);
+  assert.deepEqual(JSON.parse(ordinary.text).config.routing.workspaces, {});
+  const full = await invoke("notifier.config.export", {
+    revision: transferSettings.revision,
+    includeCredentials: true,
+  });
+  const incoming = JSON.parse(full.text);
+  incoming.credentials.local.values.url = "http://127.0.0.1:1/another-unused";
+  const planned = await invoke("notifier.config.prepare-import", {
+    revision: transferSettings.revision,
+    text: JSON.stringify(incoming),
+  });
+  assert.equal(planned.added, 1);
+  assert.equal(JSON.stringify(planned).includes("private-smoke-value"), false);
+  const beforeImport = await registered.read.handle();
+  assert.equal(beforeImport.revision, transferSettings.revision);
+  assert.deepEqual(beforeImport.values.routing.host, ["local"]);
+  const conflict = await registered.write.handle({
+    revision: "stale",
+    values: planned.config,
+  });
+  assert.equal(conflict.status, "conflict");
+  const imported = await registered.write.handle({
+    revision: planned.revision,
+    values: planned.config,
+  });
+  assert.equal(imported.status, "saved");
+  assert.deepEqual(imported.values.routing.workspaces, {
+    workspace: ["local"],
+  });
+  assert.notEqual(imported.values.routing.host[0], "local");
+  const privateValues = JSON.parse(
+    await readFile(join(directory, "operations", "credentials.json"), "utf8"),
+  );
+  assert.equal(
+    privateValues[imported.values.routing.host[0]].values.url,
+    incoming.credentials.local.values.url,
+  );
   assert.ok(hooks.has("agent.turn_ended"));
   assert.ok(hooks.has("agent.turn_started"));
   const reviewSettings = await registered.read.handle();
@@ -205,7 +272,7 @@ try {
   assert.equal(checked.recoveries[0].reviews[0].status, "continue");
   assert.equal(checked.deliveries.length, 0);
   console.log(
-    "Host smoke: bundle loaded, native settings persisted, RPC schemas validated, credentials masked; isolated AI review archived before continuation, with reviewer callbacks excluded.",
+    "Host smoke: settings migrated; portable export and staged import validated with revision conflicts and preserved local bindings; credentials masked; isolated AI review archived before continuation, with reviewer callbacks excluded.",
   );
 } finally {
   await cleanup?.();

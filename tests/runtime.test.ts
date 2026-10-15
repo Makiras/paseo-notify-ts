@@ -408,6 +408,83 @@ describe("callback recovery and durable notification flow", () => {
     expect(s.send).toHaveBeenCalledTimes(1);
     expect(s.store.state.read().recoveries).toHaveLength(1);
   });
+  it("routes new events through inheritance while retaining queued destinations", async () => {
+    const s = await setup();
+    s.c.channels.push(
+      channelSchema.parse({ id: "hook-b", name: "B", kind: "webhook" }),
+    );
+    s.c.routing.workspaces[agent.workspaceId] = ["hook-b"];
+    await s.r.configure(s.c);
+    await s.r.setCredentials("hook-b", "webhook", {
+      url: "https://example.invalid/b",
+      headers: {},
+      bearerToken: "",
+      signingSecret: "",
+    });
+    await s.r.turnEnded(event({ kind: "completed" }));
+    expect(s.store.state.read().deliveries.map((d) => d.channelId)).toEqual([
+      "hook-b",
+    ]);
+    s.c.routing.workspaces[agent.workspaceId] = [];
+    await s.r.configure(s.c);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(s.sent).toHaveBeenCalledTimes(1);
+    expect((s.sent.mock.calls[0] as unknown as [{ id: string }])[0].id).toBe(
+      "hook-b",
+    );
+    await s.r.turnEnded(event({ kind: "completed" }, "another-user"));
+    expect(s.store.state.read().deliveries).toHaveLength(1);
+  });
+  it("never sends a queued notice to a target whose credentials changed", async () => {
+    const s = await setup();
+    await s.r.turnEnded(event({ kind: "completed" }));
+    await s.r.setCredentials("hook-a", "webhook", {
+      url: "https://example.invalid/new-group",
+      headers: {},
+      bearerToken: "",
+      signingSecret: "",
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(s.sent).not.toHaveBeenCalled();
+    expect(s.store.state.read().deliveries[0]).toMatchObject({
+      phase: "canceled",
+      error: "渠道凭据或目标已变更，旧通知已取消",
+    });
+  });
+  it("stages imported credentials without modifying any registered channel", async () => {
+    const s = await setup();
+    const before = s.store.secrets.read();
+    await expect(
+      s.r.stageImportCredentials({ "hook-a": before["hook-a"]! }),
+    ).rejects.toThrow("配置已变化");
+    expect(s.store.secrets.read()).toEqual(before);
+    await s.r.stageImportCredentials({ "import-new": before["hook-a"]! });
+    await s.r.turnEnded(event({ kind: "completed" }));
+    expect(s.store.state.read().deliveries.map((d) => d.channelId)).toEqual([
+      "hook-a",
+    ]);
+  });
+  it("pins legacy queued destinations when upgrading the journal", async () => {
+    const s = await setup();
+    await s.r.turnEnded(event({ kind: "completed" }));
+    await s.store.state.update((state) => {
+      delete state.deliveries[0]!.credentialsHash;
+    });
+    await s.r.close();
+    const resumed = new Runtime(s.store, s.sent);
+    runtimes.push(resumed);
+    await resumed.start(s.c);
+    expect(s.store.state.read().deliveries[0]!.credentialsHash).toBeDefined();
+    await resumed.setCredentials("hook-a", "webhook", {
+      url: "https://example.invalid/new-group",
+      headers: {},
+      bearerToken: "",
+      signingSecret: "",
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(s.sent).not.toHaveBeenCalled();
+    expect(s.store.state.read().deliveries[0]!.phase).toBe("canceled");
+  });
   it("isolates channel failures and applies notification retry budgets", async () => {
     const s = await setup();
     s.c.recovery.enabled = false;
@@ -415,6 +492,7 @@ describe("callback recovery and durable notification flow", () => {
     s.c.channels.push(
       channelSchema.parse({ id: "hook-b", kind: "webhook", name: "Second" }),
     );
+    s.c.routing.host.push("hook-b");
     await s.r.configure(s.c);
     await s.r.setCredentials("hook-b", "webhook", {
       url: "https://example.invalid/b",

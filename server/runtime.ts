@@ -24,6 +24,11 @@ import {
 } from "./channels";
 import { abortable, reviewPrompt, type ReviewDecision } from "./reviewer";
 import { nextRetry } from "./policy";
+import {
+  channelAllows as routes,
+  notificationChannels,
+} from "../shared/routing";
+import type { TransferSecrets } from "../shared/transfer";
 import type { PaseoPort } from "./paseo";
 import type { AgentTimelineItem } from "./types";
 import { prune, type Recovery, type State, type Storage } from "./storage";
@@ -44,17 +49,6 @@ export type RuntimeStorage = {
 };
 const active = (r: Recovery) =>
   ["waiting", "reviewing", "dispatching", "running"].includes(r.phase);
-function routes(channel: Channel, notice: Notification): boolean {
-  return (
-    channel.enabled &&
-    channel.events.includes(notice.kind) &&
-    (!channel.providers.length ||
-      channel.providers.includes(notice.provider)) &&
-    (!channel.workspaceIds.length ||
-      (notice.workspaceId !== null &&
-        channel.workspaceIds.includes(notice.workspaceId)))
-  );
-}
 const cardOf = (r: Recovery): RecoveryCard => ({
   id: r.id,
   agentId: r.agentId,
@@ -95,6 +89,14 @@ export class Runtime {
   async start(config: Config): Promise<void> {
     this.config = structuredClone(config);
     await this.storage.state.update((state) => {
+      const secrets = this.storage.secrets.read();
+      for (const delivery of state.deliveries) {
+        // Older journals did not record the destination fingerprint. Pin them
+        // to the credentials present at upgrade before allowing later edits.
+        delivery.credentialsHash ??= digest(
+          secrets[delivery.channelId] ?? null,
+        );
+      }
       for (const r of state.recoveries) {
         for (const review of r.reviews) {
           this.ownedReviewers.add(review.agentId);
@@ -272,8 +274,25 @@ export class Runtime {
     if (!this.config.channels.some((c) => c.id === id && c.kind === kind))
       throw new Error("请先保存此渠道的设置");
     validateCredentials(kind, values);
+    const old = this.storage.secrets.read()[id];
+    if (digest(old ?? null) !== digest({ kind, values }))
+      this.deliveryBusy.get(id)?.abort();
     await this.storage.secrets.update((state) => {
       state[id] = { kind, values };
+    });
+  }
+  async stageImportCredentials(entries: TransferSecrets): Promise<void> {
+    if (!Object.keys(entries).length) return;
+    for (const entry of Object.values(entries))
+      validateCredentials(entry.kind, entry.values);
+    await this.storage.secrets.update((state) => {
+      if (Object.keys(state).length + Object.keys(entries).length > 1000)
+        throw new Error("未使用的凭据记录过多，请清理后再导入");
+      for (const [id, entry] of Object.entries(entries)) {
+        if (this.config.channels.some((c) => c.id === id) || state[id])
+          throw new Error("配置已变化，请重新预览导入内容");
+        state[id] = entry;
+      }
     });
   }
   async deleteCredentials(id: string): Promise<void> {
@@ -351,15 +370,16 @@ export class Runtime {
   }
   private enqueue(state: State, notice: Notification): void {
     if (!this.config.enabled) return;
-    for (const channel of this.config.channels.filter((c) =>
-      routes(c, notice),
-    )) {
+    for (const channel of notificationChannels(this.config, notice)) {
       const id = `${notice.id}:${channel.id}`;
       if (!state.deliveries.some((d) => d.id === id))
         state.deliveries.push({
           id,
           channelId: channel.id,
           channelKind: channel.kind,
+          credentialsHash: digest(
+            this.storage.secrets.read()[channel.id] ?? null,
+          ),
           notice,
           phase: "pending",
           attempts: 0,
@@ -724,6 +744,9 @@ export class Runtime {
       )
         return false;
       d.phase = "pending";
+      d.credentialsHash = digest(
+        this.storage.secrets.read()[d.channelId] ?? null,
+      );
       d.attempts = 0;
       d.error = null;
       d.dueAt = this.now();
@@ -1098,6 +1121,18 @@ export class Runtime {
       (c) => c.id === d.channelId && c.kind === d.channelKind,
     );
     const secret = this.storage.secrets.read()[d.channelId];
+    if (
+      d.credentialsHash !== undefined &&
+      d.credentialsHash !== digest(secret ?? null)
+    ) {
+      await this.storage.state.update((state) => {
+        const row = state.deliveries.find((item) => item.id === id)!;
+        row.phase = "canceled";
+        row.error = "渠道凭据或目标已变更，旧通知已取消";
+        row.updatedAt = this.now();
+      });
+      return;
+    }
     if (d.attempts >= this.config.notifications.maxAttempts) {
       await this.storage.state.update((state) => {
         const row = state.deliveries.find((item) => item.id === id)!;

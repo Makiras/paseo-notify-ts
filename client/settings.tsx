@@ -29,6 +29,9 @@ import {
 import { ChannelEditor, newChannel } from "./channel-editor";
 import { Activity } from "./activity";
 import { ReviewSettings } from "./review-settings";
+import { ChannelSelection } from "./channel-selection";
+import { ConfigTransfer } from "./transfer";
+import { withoutChannel } from "../shared/routing";
 
 export function Settings(props: PluginSurfaceProps) {
   const settings = useSettings(preferences);
@@ -65,7 +68,7 @@ export function Settings(props: PluginSurfaceProps) {
         </SettingsCard>
       </SettingsSection>
     );
-  return <Editor {...props} settings={settings} />;
+  return <Editor key={props.host.id} {...props} settings={settings} />;
 }
 
 function Editor({
@@ -82,6 +85,7 @@ function Editor({
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const saving = useRef(false);
+  const [transferBusy, setTransferBusy] = useState(false);
   const readStatus = useRpc(statusRpc),
     removeCredentials = useRpc(deleteCredentialsRpc);
   const refresh = useCallback(async () => {
@@ -122,7 +126,7 @@ function Editor({
     }
   }, [dirty, settings.revision, settings.values, revision]);
   const patch = (value: Partial<Config>) => {
-    if (saving.current) return;
+    if (saving.current || transferBusy) return;
     setDraft((d) => ({ ...d, ...value }));
     setDirty(true);
     setFeedback(null);
@@ -134,7 +138,7 @@ function Editor({
   const valid = configSchema.safeParse(draft);
   async function save() {
     const result = configSchema.safeParse(draft);
-    if (!result.success || saving.current) return;
+    if (!result.success || saving.current || transferBusy) return;
     saving.current = true;
     const removed = settings.values.channels.filter(
       (c) => !draft.channels.some((next) => next.id === c.id),
@@ -174,7 +178,9 @@ function Editor({
           <SettingsAction
             label={dirty ? "有未保存的修改" : "配置已同步"}
             actionLabel={settings.saving ? "保存中…" : "保存设置"}
-            disabled={!dirty || settings.saving || !valid.success}
+            disabled={
+              !dirty || settings.saving || transferBusy || !valid.success
+            }
             onPress={() => void save()}
           />
           {dirty && (
@@ -214,7 +220,21 @@ function Editor({
           )}
         </SettingsCard>
       </SettingsSection>
-      <View key={formKey} style={{ gap: 16 }}>
+      <View
+        key={formKey}
+        style={{ gap: 16 }}
+        pointerEvents={transferBusy ? "none" : "auto"}
+      >
+        <SettingsSection title="Host 默认通知渠道">
+          <ChannelSelection
+            channels={draft.channels}
+            value={draft.routing.host}
+            disabled={settings.saving || transferBusy}
+            onChange={(ids) =>
+              patch({ routing: { ...draft.routing, host: ids ?? [] } })
+            }
+          />
+        </SettingsSection>
         <SettingsSection title="自动恢复">
           <SettingsCard>
             <SettingsSwitch
@@ -340,11 +360,7 @@ function Editor({
                 ),
               })
             }
-            onRemove={() =>
-              patch({
-                channels: draft.channels.filter((c) => c.id !== channel.id),
-              })
-            }
+            onRemove={() => patch(withoutChannel(draft, channel.id))}
             onCredentialsChanged={() => void refresh()}
           />
         ))}
@@ -364,6 +380,16 @@ function Editor({
           </SettingsCard>
         </SettingsSection>
       </View>
+      <ConfigTransfer
+        settings={settings}
+        theme={theme}
+        disabled={dirty || settings.saving}
+        onBusyChange={setTransferBusy}
+        onImported={() => {
+          setDirty(false);
+          void refresh();
+        }}
+      />
       <Activity
         status={status}
         error={statusError}

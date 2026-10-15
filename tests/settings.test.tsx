@@ -39,11 +39,16 @@ vi.mock("react-native", () => ({
   View: "View",
   Pressable: "Pressable",
 }));
+vi.mock("@getpaseo/plugin/client/react-native", () => ({
+  TextInput: "TextInput",
+  copyText: vi.fn(async () => {}),
+}));
 import { Settings } from "../client/settings";
 
 let renderer: ReactTestRenderer;
 let state: SettingsState<typeof configSchema>;
 const props = {
+  host: { id: "host-a", label: "Host A" },
   theme: { colors: { foreground: "black", foregroundMuted: "gray" } },
   layout: { compact: true, platform: "ios" },
 } as unknown as PluginSurfaceProps;
@@ -178,5 +183,28 @@ describe("native settings drafts", () => {
     await render();
     expect(renderer.root.findByProps({ label: "正在读取设置…" })).toBeTruthy();
     expect(renderer.root.findAllByProps({ label: "自动继续" })).toHaveLength(0);
+  });
+  it("does not carry a dirty configuration draft into another host", async () => {
+    await render();
+    await act(async () =>
+      renderer.root
+        .findByProps({ label: "自动继续" })
+        .props.onValueChange(true),
+    );
+    host.settings = { ...state, values: defaultConfig() };
+    await act(async () =>
+      renderer.update(
+        createElement(Settings, {
+          ...props,
+          host: { id: "host-b", label: "Host B" },
+        }),
+      ),
+    );
+    expect(renderer.root.findByProps({ label: "自动继续" }).props.value).toBe(
+      false,
+    );
+    expect(
+      renderer.root.findByProps({ actionLabel: "保存设置" }).props.disabled,
+    ).toBe(true);
   });
 });
