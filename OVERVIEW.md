@@ -1,6 +1,6 @@
 # Paseo Notifier
 
-任务完成、失败或等待权限时，通过 Webhook、飞书 / Lark、企业微信、Telegram、钉钉、Bark、ntfy、Slack 或 Discord 接收通知。
+任务完成、失败或等待权限时，通过 Webhook、飞书 / Lark、企业微信、Telegram、钉钉、Bark、ntfy、Slack 或 Discord 接收通知。飞书渠道可选择文本或内置卡片，共用消息模板。
 
 通知管理支持自定义消息模板、内置占位符和正则提取，提供默认模板、页面内示例与实时预览。
 

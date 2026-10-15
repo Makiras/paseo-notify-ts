@@ -109,3 +109,5 @@ npm run wiki:publish
 GitHub 要求先在网页创建一个 Wiki 首页，之后 `.wiki.git` 才能克隆和推送。首次使用需在[仓库 Wiki](https://github.com/Makiras/paseo-notify-ts/wiki)创建并保存 `Home`，然后执行发布命令；这不是启用 Wiki 开关就能完成的步骤。依据：[GitHub 官方 Wiki 说明](https://docs.github.com/en/communities/documenting-your-project-with-wikis/adding-or-editing-wiki-pages#cloning-wikis-to-your-computer)。
 
 当前 Wiki 使用维护者命令发布，不依赖 Actions Token 对 Wiki 的写入权限，也不要求增加 PAT。Wiki 尚未初始化时，所有页面仍可在[仓库文档目录](https://github.com/Makiras/paseo-notify-ts/tree/main/docs/wiki)阅读。
+
+飞书卡片回归包括：配置迁移、按渠道保存消息类型、凭据保留、即时测试与队列投递、摘要隐私、签名、JSON 转义后完整请求大小，以及剪贴板格式兼容。实际 Paseo 浏览器检查会切换文本 / 卡片、保存刷新并验证手机宽度的预览；Hermes 检查也执行卡片构建、Pattern 与截断。测试不向真实飞书群发送消息，平台最终展示仍需用户保存后发送测试确认。

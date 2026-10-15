@@ -20,7 +20,7 @@ export type TransferSecrets = z.infer<typeof transferSecretsSchema>;
 export const transferSchema = z
   .object({
     schema: z.literal("paseo-notify-ts/config"),
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
     config: configSchema.refine(
       (v) =>
         !Object.keys(v.routing.schedules).length &&

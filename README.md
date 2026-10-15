@@ -6,7 +6,7 @@ Paseo 原生通知与自动恢复插件。任务结束、失败或等待权限�
 
 ## 功能
 
-- **九种通知渠道**：通用 Webhook、飞书 / Lark、企业微信、Telegram、钉钉、Bark、ntfy、Slack、Discord。
+- **九种通知渠道**：通用 Webhook、飞书 / Lark、企业微信、Telegram、钉钉、Bark、ntfy、Slack、Discord；飞书支持文本与内置卡片。
 - **消息模板与 Pattern**：自定义标题、正文，使用内置占位符和正则提取补全信息；页面内提供示例和实时预览。
 - **分层选择接收目标**：Host、工作区、会话可以分别选择渠道，也可跟随上级或关闭通知。
 - **定时任务绑定**：给 Paseo Schedule 固定接收渠道，跨次运行有效。

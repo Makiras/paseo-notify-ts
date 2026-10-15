@@ -17,11 +17,12 @@ await cp("shared", resolve(fixture, "shared"), { recursive: true });
 await writeFile(
   resolve(fixture, "index.client.ts"),
   `
+  import { renderFeishuCard } from "./shared/feishu";
   import { renderNotification } from "./shared/templates";
   import { messageTemplateSchema, extractionExamples } from "./shared/template-schema";
   import { configSchema } from "./shared/config";
   export default function inspect() {
-    return { renderNotification, messageTemplateSchema, extractionExamples, configSchema };
+    return { renderFeishuCard, renderNotification, messageTemplateSchema, extractionExamples, configSchema };
   }
 `,
 );
@@ -86,6 +87,13 @@ const harness = await build({
       result = api.renderNotification(notice, { ...config.notifications, includePreview: true, template });
       check(result.title === "检查 · 任务", "Builtin placeholders failed");
       check(result.body.includes("PROJ-123"), "Ticket regex failed");
+      const card = api.renderFeishuCard(notice, { ...config.notifications, includePreview: true, template });
+      check(card.header.title.content === "检查 · 任务", "Card title failed");
+      check(card.elements[0].text.content.includes("PROJ-123"), "Card extraction failed");
+      check(!api.renderFeishuCard(notice, config.notifications).elements[0].text.content.includes("PROJ-123"), "Card privacy failed");
+      const longCard = api.renderFeishuCard({ ...notice, summary: "中文🌍".repeat(8000) }, { ...config.notifications, template: { ...template, body: "{{summary}}" } });
+      check(longCard.elements[0].text.content.endsWith("…"), "Card truncation failed");
+
       check(result.body.includes("https://example.com/result/123"), "URL regex failed");
       for (const [pattern, flags, text, expected] of [
         ["([A-Z]+-[0-9]+)", "i", "proj-42", "proj-42"],
@@ -101,7 +109,7 @@ const harness = await build({
         check(rendered.body === expected, "Regex failed: " + pattern + " -> " + rendered.body);
       }
       check(!api.messageTemplateSchema.safeParse({ ...template, rules: [{ ...rules[0], pattern: "(" }] }).success, "Invalid regex accepted");
-      print("Hermes: official client bundle dynamically loaded, settings registered, defaults parsed, template extraction and privacy passed.");
+      print("Hermes: official client bundle dynamically loaded, settings registered, defaults parsed, template/card extraction, truncation and privacy passed.");
     `,
     resolveDir: process.cwd(),
   },

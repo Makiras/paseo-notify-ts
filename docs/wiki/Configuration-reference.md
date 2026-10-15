@@ -1,6 +1,6 @@
 # 配置参考
 
-普通配置使用 Paseo Host 范围的 `notifier` 设置，当前设置格式版本为 5。源码定义在 [`shared/config.ts`](https://github.com/Makiras/paseo-notify-ts/blob/main/shared/config.ts)。推荐通过界面修改，避免绕过并发版本校验。
+普通配置使用 Paseo Host 范围的 `notifier` 设置，当前设置格式版本为 6。源码定义在 [`shared/config.ts`](https://github.com/Makiras/paseo-notify-ts/blob/main/shared/config.ts)。推荐通过界面修改，避免绕过并发版本校验。
 
 ## 全局与通知
 
@@ -43,6 +43,7 @@
 - `id`：小写字母开头，仅小写字母、数字、连字符，最多 48 字符。
 - `name`：非空，最多 80 字符。
 - `kind`：`webhook`、`feishu`、`wecom`、`telegram`、`dingtalk`、`bark`、`ntfy`、`slack`、`discord`。
+- `feishu.messageType`：飞书渠道专用，`text` 或 `card`，缺省按 `text`；决定文本或内置卡片显示，不改变凭据。
 - 默认事件：`completed`、`recovered`、`failed`、`blocked`、`permission`。
 - `providers`：最多 32 项；`workspaceIds`：最多 100 项；空数组表示不限制。
 
@@ -67,6 +68,6 @@
 
 ## 格式迁移
 
-从格式版本 1 迁移时，原有广播行为转换为全部已有渠道的 Host 默认选择；版本 2 → 3 增加任务绑定并保留原默认；版本 3 → 4 增加更新偏好，默认开启检查；版本 4 → 5 补充默认消息模板和空提取规则。迁移不触发通知测试，也不会启用原本关闭的恢复、复核或回复摘要。
+从格式版本 1 迁移时，原有广播行为转换为全部已有渠道的 Host 默认选择；版本 2 → 3 增加任务绑定并保留原默认；版本 3 → 4 增加更新偏好，默认开启检查；版本 4 → 5 补充默认消息模板和空提取规则；版本 5 → 6 支持飞书消息类型，已有渠道继续使用文本。迁移不触发通知测试，也不会启用原本关闭的恢复、复核或回复摘要。
 
-剪贴板文件使用独立的 `paseo-notify-ts/config`、版本 1 包装，省略本地绑定及工作区过滤，见[导入导出](Configuration-transfer.md)。配置版本和插件发布版本是不同概念。
+剪贴板文件使用独立的 `paseo-notify-ts/config`、版本 1 / 2 包装（含飞书卡片渠道时导出版本 2，避免旧插件忽略卡片设置），省略本地绑定及工作区过滤，见[导入导出](Configuration-transfer.md)。配置版本和插件发布版本是不同概念。

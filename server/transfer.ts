@@ -20,7 +20,13 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 const definition = ({ id: _id, originId: _origin, ...channel }: Channel) =>
-  canonical(channel);
+  canonical({
+    ...channel,
+    feishu:
+      channel.kind === "feishu"
+        ? { messageType: channel.feishu?.messageType ?? "text" }
+        : undefined,
+  });
 
 export function exportConfiguration(
   config: Config,
@@ -29,7 +35,12 @@ export function exportConfiguration(
 ): string {
   const value: Transfer = {
     schema: "paseo-notify-ts/config",
-    version: 1,
+    // Older plugins must reject card exports instead of silently dropping the format.
+    version: config.channels.some(
+      (c) => c.kind === "feishu" && c.feishu?.messageType === "card",
+    )
+      ? 2
+      : 1,
     config: portableConfig(config),
   };
   if (includeCredentials) {

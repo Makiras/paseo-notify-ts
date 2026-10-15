@@ -197,6 +197,37 @@ function acceptSettings() {
 }
 
 describe("credential drafts across settings refreshes", () => {
+  it("saves per-channel Feishu type, preserves credentials and tests immediately", async () => {
+    state.values.channels = [
+      channelSchema.parse({ id: "team", name: "Team", kind: "feishu" }),
+    ];
+    status.credentials = [{ id: "team", kind: "feishu", configured: true }];
+    acceptSettings();
+    await render();
+    expect(renderer.root.findByProps({ label: "消息类型" }).props.value).toBe(
+      "text",
+    );
+    await select("消息类型", "card");
+    expect(renderer.root.findByProps({ label: "卡片示例" })).toBeTruthy();
+    await click("保存设置");
+    expect(state.values.channels[0]!.feishu?.messageType).toBe("card");
+    expect(host.write).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findByProps({ actionLabel: "发送测试" }).props.disabled,
+    ).toBe(false);
+    await click("发送测试");
+    expect(host.test).toHaveBeenCalledWith({ id: "team" });
+    await act(async () => renderer.unmount());
+    await render();
+    expect(renderer.root.findByProps({ label: "消息类型" }).props.value).toBe(
+      "card",
+    );
+    await select("消息类型", "text");
+    expect(renderer.root.findAllByProps({ label: "卡片示例" })).toHaveLength(0);
+    await click("保存设置");
+    expect(host.write).not.toHaveBeenCalled();
+  });
+
   it.each(["保存凭据", "保存设置"])(
     "enables ntfy testing after %s while status refresh is still pending",
     async (action) => {

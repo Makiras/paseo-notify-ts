@@ -5,13 +5,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRpc } from "@getpaseo/plugin/client";
+import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   SettingsAction,
   SettingsCard,
   SettingsInput,
   SettingsRow,
   SettingsSection,
+  SettingsSelect,
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
 import {
@@ -22,6 +23,8 @@ import {
   type NoticeKind,
 } from "../shared/config";
 import { saveCredentialsRpc, testChannelRpc } from "../shared/contracts";
+import type { MessageFormat } from "../shared/templates";
+import { FeishuPreview } from "./feishu-preview";
 
 export interface CredentialEditorHandle {
   dirty: boolean;
@@ -31,6 +34,8 @@ export interface CredentialEditorHandle {
 }
 type ChannelEditorProps = {
   channel: Channel;
+  format: MessageFormat;
+  theme: PluginSurfaceProps["theme"];
   saved: boolean;
   configured: boolean;
   settingsKey: number;
@@ -48,6 +53,8 @@ export const ChannelEditor = forwardRef<
 >(function ChannelEditor(
   {
     channel,
+    format,
+    theme,
     saved,
     configured,
     settingsKey,
@@ -170,6 +177,32 @@ export const ChannelEditor = forwardRef<
           disabled={locked}
           onChangeText={(name) => patch({ name })}
         />
+        {channel.kind === "feishu" && (
+          <>
+            <SettingsSelect
+              label="消息类型"
+              hint="只影响这个渠道。标题和正文在“通知管理”中修改；切换类型无需重新填写凭据。保存设置后，可发送测试。"
+              value={channel.feishu?.messageType ?? "text"}
+              options={[
+                { value: "text", label: "文本消息" },
+                { value: "card", label: "卡片消息" },
+              ]}
+              disabled={locked}
+              onValueChange={(value) => {
+                if (!locked)
+                  patch({ feishu: { messageType: value as "text" | "card" } });
+              }}
+            />
+            {channel.feishu?.messageType === "card" ? (
+              <FeishuPreview format={format} theme={theme} />
+            ) : (
+              <SettingsRow
+                label="普通文本"
+                hint="把标题和正文作为一条普通消息发送到群里。"
+              />
+            )}
+          </>
+        )}
         {(
           [
             "completed",

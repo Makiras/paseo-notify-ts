@@ -122,6 +122,6 @@ Pattern：结果[：:]\s*(https?://[^\s]+)
 
 保存后在「通知渠道」点击「发送测试」，向真实目标发送当前模板。测试标题为“Paseo 通知连接测试”，状态说明为“通知渠道已连通。”，不含真实回复摘要。
 
-ntfy / Bark 使用独立标题和正文；其他聊天渠道把标题放在正文第一行。Webhook 的 `text` 合并两者，`message.title` / `message.body` 分别提供渲染结果。渲染标题上限 200 个 UTF-16 单元，正文 16000，之后继续应用平台截断。页面预览不模拟各平台截断。
+ntfy / Bark 使用独立标题和正文；飞书卡片将标题放在彩色标题栏、正文放在内容区；普通聊天消息把标题放在正文第一行。飞书消息类型在对应渠道中选择，详见[飞书渠道](Channel-Feishu.md)。Webhook 的 `text` 合并两者，`message.title` / `message.body` 分别提供渲染结果。渲染标题上限 200 个 UTF-16 单元，正文 16000，之后继续应用平台截断。公共模板页预览不模拟各平台截断；飞书渠道内的卡片示例使用实际卡片截断结果。
 
 相关：[通知事件与内容](Notifications.md) · [设置与凭据](Settings-and-credentials.md) · [配置参考](Configuration-reference.md)

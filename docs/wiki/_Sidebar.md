@@ -33,7 +33,7 @@
 **技术参考**
 
 - [架构](Architecture.md)
-- [飞书卡片扩展方案（规划）](Feishu-cards-design.md)
+- [飞书卡片与后续扩展](Feishu-cards-design.md)
 - [存储与可靠性](Storage-and-reliability.md)
 - [配置参考](Configuration-reference.md)
 - [Webhook 协议](Webhook-protocol.md)

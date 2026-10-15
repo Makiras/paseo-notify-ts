@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import type { Channel } from "../shared/config";
 import type { Credentials, Notification } from "../shared/contracts";
+import { renderFeishuCard, truncateJsonText } from "../shared/feishu";
 import {
   renderNotification,
   visibleNotification,
@@ -178,10 +179,17 @@ export function buildRequest(
   let payload: unknown;
   if (channel.kind === "feishu") {
     payload = {
-      msg_type: "text",
-      content: {
-        text: truncateUtf8(message.text.replace(/<at\b/gi, "〈at"), 12_000),
-      },
+      ...(channel.feishu?.messageType === "card"
+        ? { msg_type: "interactive", card: renderFeishuCard(notice, format) }
+        : {
+            msg_type: "text",
+            content: {
+              text: truncateJsonText(
+                message.text.replace(/<at\b/gi, "〈at"),
+                12_000,
+              ),
+            },
+          }),
       ...(credentials.signingSecret
         ? {
             timestamp,

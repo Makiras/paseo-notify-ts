@@ -58,6 +58,8 @@ const fields: Record<string, string> = {
   id: "渠道标识",
   originId: "来源渠道标识",
   kind: "通知平台",
+  feishu: "飞书",
+  messageType: "消息类型",
   events: "通知类型",
   providers: "限定提供方",
   workspaceIds: "限定工作区",

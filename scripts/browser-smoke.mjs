@@ -290,7 +290,7 @@ async function checkBrowser(name) {
       page.getByRole("button", { name: "展开提取规则", exact: true }),
     ).toBeVisible();
     const persisted = JSON.parse(await readFile(settingsFile, "utf8"));
-    assert.equal(persisted.version, 5);
+    assert.equal(persisted.version, 6);
     assert.equal(persisted.values.notifications.template.title, title);
 
     // Check the previously broken save -> credentials -> immediately test flow.
@@ -312,6 +312,92 @@ async function checkBrowser(name) {
     assert.equal(requests[0].topic, "browser-smoke");
     assert.ok(requests[0].title.startsWith(`CI ${name} · `));
     assert.equal(typeof requests[0].message, "string");
+
+    // Exercise the real per-channel card selector and preview. No external
+    // credentials are configured and no Feishu notification is sent.
+    await expect(page.getByRole("button", { name: /^消息类型:/ })).toHaveCount(
+      0,
+    );
+    await page.getByRole("button", { name: /^新渠道平台:/ }).click();
+    await page
+      .getByRole("menuitem", { name: "飞书 / Lark 群机器人", exact: true })
+      .click();
+    await page.getByRole("button", { name: "添加渠道", exact: true }).click();
+    await page
+      .getByRole("textbox", { name: "名称", exact: true })
+      .fill("CI 卡片群");
+    await page
+      .getByRole("button", { name: "消息类型: 文本消息", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: "卡片消息", exact: true }).click();
+    await expect(page.getByText("卡片示例", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("feishu-card-preview")).toContainText(
+      "工单号：PROJ-123",
+    );
+    await page
+      .getByRole("button", { name: "示例通知类型: 任务完成", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: "任务失败", exact: true }).click();
+    await expect(page.getByTestId("feishu-card-preview")).toContainText(
+      `CI ${name} · 任务失败`,
+    );
+    await page.getByRole("button", { name: "保存设置", exact: true }).click();
+    await expect(page.getByText("设置已保存", { exact: true })).toBeVisible();
+    await page.reload();
+    await section("通知渠道");
+    await page.getByRole("button", { name: /^编辑渠道:/ }).click();
+    await page
+      .getByRole("menuitem", { name: "2. CI 卡片群", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "消息类型: 卡片消息", exact: true }),
+    ).toBeVisible();
+    assert.equal(
+      JSON.parse(await readFile(settingsFile, "utf8")).values.channels[1].feishu
+        .messageType,
+      "card",
+    );
+    await page.getByRole("button", { name: /^新渠道平台:/ }).click();
+    await page
+      .getByRole("menuitem", { name: "飞书 / Lark 群机器人", exact: true })
+      .click();
+    await page.getByRole("button", { name: "添加渠道", exact: true }).click();
+    await page
+      .getByRole("textbox", { name: "名称", exact: true })
+      .fill("CI 文本群");
+    await expect(
+      page.getByRole("button", { name: "消息类型: 文本消息", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "保存设置", exact: true }).click();
+    await expect(page.getByText("设置已保存", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /^编辑渠道:/ }).click();
+    await page
+      .getByRole("menuitem", { name: "2. CI 卡片群", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "消息类型: 卡片消息", exact: true }),
+    ).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    // Paseo remounts this surface when switching desktop/mobile layouts.
+    // Select the persisted card channel again in the compact surface.
+    await expect(
+      page.getByRole("button", { name: "设置栏目: 通知渠道", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /^编辑渠道:/ }).click();
+    await page
+      .getByRole("menuitem", { name: "2. CI 卡片群", exact: true })
+      .click();
+    await page.getByText("卡片示例", { exact: true }).scrollIntoViewIfNeeded();
+    const cardBounds = await page
+      .getByTestId("feishu-card-preview")
+      .boundingBox();
+    assert.ok(
+      cardBounds && cardBounds.x >= 0 && cardBounds.x + cardBounds.width <= 390,
+    );
+    await page.screenshot({
+      path: join(artifacts, "feishu-card-mobile.png"),
+      fullPage: true,
+    });
 
     // The host switches to its compact controls; exercise the real dropdown.
     await page.setViewportSize({ width: 390, height: 844 });
@@ -349,7 +435,7 @@ async function checkBrowser(name) {
     await page.getByLabel("标题模板", { exact: true }).scrollIntoViewIfNeeded();
     assert.deepEqual(errors, [], "Browser errors must fail the smoke test");
     console.log(
-      `${name}: compact template layout, folding/drafts/error recovery, save/reload and ntfy save/test passed`,
+      `${name}: compact template layout, folding/drafts/error recovery, save/reload, Feishu card selection/preview and ntfy save/test passed`,
     );
   } finally {
     if (page)

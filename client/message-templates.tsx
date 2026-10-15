@@ -22,6 +22,7 @@ import {
   type MessageTemplate,
 } from "../shared/template-schema";
 import { renderNotification } from "../shared/templates";
+import { notificationExample } from "../shared/notification-example";
 import { validationMessage } from "./validation";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -131,11 +132,12 @@ export function MessageTemplates({
   const [wide, setWide] = useState(false);
   const [selected, setSelected] = useState(0);
   const [kind, setKind] = useState<NoticeKind>("completed");
-  const [sampleTitle, setSampleTitle] = useState("每日构建检查");
-  const [sampleSummary, setSampleSummary] =
-    useState("请在 Paseo 查看任务结果。");
+  const [sampleTitle, setSampleTitle] = useState(notificationExample().title);
+  const [sampleSummary, setSampleSummary] = useState(
+    notificationExample().summary,
+  );
   const [sampleReply, setSampleReply] = useState(
-    "已处理工单 PROJ-123。\n结果：https://example.com/result/123\n全部检查通过。",
+    notificationExample().preview!,
   );
   const currentIndex = Math.min(selected, value.rules.length - 1);
   const rule = value.rules[currentIndex];
@@ -168,23 +170,10 @@ export function MessageTemplates({
       parsed.success
         ? renderNotification(
             {
-              id: "example-notification",
-              kind,
-              agentId: "example-session",
-              workspaceId: "example-workspace",
-              scheduleId: "daily-check",
-              provider: "codex",
+              ...notificationExample(kind),
               title: sampleTitle,
               summary: sampleSummary,
               preview: sampleReply,
-              createdAt: Date.UTC(2026, 0, 1, 8),
-              attempts: ["recovered", "failed"].includes(kind) ? 2 : 0,
-              failure:
-                kind === "blocked"
-                  ? "policy_blocked"
-                  : ["recovered", "failed"].includes(kind)
-                    ? "network"
-                    : undefined,
             },
             { ...notifications, template: parsed.data },
           )
@@ -562,7 +551,7 @@ export function MessageTemplates({
         />
         <SettingsRow
           label="发送方式"
-          hint="ntfy 和 Bark 把标题与正文分开显示，聊天渠道通常把标题放在第一行。没有内容的变量会留空；一整行只有空变量时会省略。预览使用示例内容，平台可能会缩短过长的消息。"
+          hint="ntfy、Bark 和飞书卡片会分开显示标题与正文；普通聊天消息把标题放在第一行。没有内容的变量会留空；一整行只有空变量时会省略。预览使用示例内容，平台可能会缩短过长的消息。"
         />
       </Details>
     </>

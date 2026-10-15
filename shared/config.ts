@@ -87,6 +87,10 @@ export const channelSchema = z.object({
   originId: channelIdSchema.optional(),
   name: z.string().trim().min(1).max(80),
   kind: channelKindSchema,
+  // Absent on older channels; text remains the compatibility default.
+  feishu: z
+    .object({ messageType: z.enum(["text", "card"]).default("text") })
+    .optional(),
   enabled: z.boolean().default(true),
   events: z
     .array(noticeKindSchema)
@@ -184,7 +188,8 @@ export const configSchema = z
 export type Config = z.infer<typeof configSchema>;
 export const defaultConfig = (): Config => configSchema.parse({});
 export function migrateSettings(values: unknown, fromVersion: number): Config {
-  if (![1, 2, 3, 4].includes(fromVersion)) throw new Error("不支持的设置格式");
+  if (![1, 2, 3, 4, 5].includes(fromVersion))
+    throw new Error("不支持的设置格式");
   const config = configSchema.parse(values);
   // Preserve the previous fan-out for existing installations only.
   if (fromVersion === 1) config.routing.host = config.channels.map((c) => c.id);
@@ -193,7 +198,7 @@ export function migrateSettings(values: unknown, fromVersion: number): Config {
 export const preferences = defineSettings({
   id: "notifier",
   scope: "host",
-  version: 5,
+  version: 6,
   schema: configSchema,
   migrate: migrateSettings,
 });

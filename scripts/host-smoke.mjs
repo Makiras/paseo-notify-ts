@@ -116,7 +116,7 @@ try {
     JSON.parse(
       await readFile(join(directory, "settings", "notifier.json"), "utf8"),
     ).version,
-    5,
+    6,
   );
   const values = {
     ...current.values,

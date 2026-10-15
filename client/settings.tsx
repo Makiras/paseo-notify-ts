@@ -455,6 +455,8 @@ function Editor({
                 disabled={busy || transferBusy}
                 onCredentialState={onCredentialState}
                 channel={channel}
+                format={draft.notifications}
+                theme={theme}
                 saved={settings.values.channels.some(
                   (c) => c.id === channel.id && c.kind === channel.kind,
                 )}

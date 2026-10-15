@@ -86,6 +86,50 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it("uses the saved Feishu type for queued notices and immediate tests without replacing credentials", async () => {
+    const s = await setup();
+    s.c.channels[0] = channelSchema.parse({
+      id: "hook-a",
+      name: "Team",
+      kind: "feishu",
+    });
+    await s.store.secrets.update((secrets) => {
+      secrets["hook-a"] = {
+        kind: "feishu",
+        values: {
+          url: "https://open.feishu.cn/open-apis/bot/v2/hook/test",
+          signingSecret: "saved",
+          bearerToken: "",
+          headers: {},
+        },
+      };
+    });
+    await s.r.configure(s.c);
+    await s.r.turnEnded(event({ kind: "completed" }));
+    s.c.channels[0]!.feishu = { messageType: "card" };
+    await s.r.configure(s.c);
+    await vi.advanceTimersByTimeAsync(1000);
+    const first = s.sent.mock.calls[0]!;
+    expect(
+      JSON.parse(
+        buildRequest(first[0], first[1], first[2], Date.now(), first[4]?.format)
+          .body,
+      ).msg_type,
+    ).toBe("interactive");
+    expect(await s.r.testChannel("hook-a")).toMatchObject({ ok: true });
+    const last = s.sent.mock.calls.at(-1)!;
+    const payload = JSON.parse(
+      buildRequest(last[0], last[1], last[2], Date.now(), last[4]?.format).body,
+    );
+    expect(payload.card.header.title.content).toBe("Paseo · 测试通知");
+    expect(payload.card.header.template).toBe("blue");
+    expect(last[1].signingSecret).toBe("saved");
+    s.c.channels[0]!.feishu = { messageType: "text" };
+    await s.r.configure(s.c);
+    await vi.advanceTimersByTimeAsync(1000);
+    await s.r.testChannel("hook-a");
+    expect(s.sent.mock.calls.at(-1)![0].feishu?.messageType).toBe("text");
+  });
   it("uses current saved templates for queued deliveries and immediate channel tests", async () => {
     const s = await setup();
     await s.r.turnEnded(event({ kind: "completed" }));
