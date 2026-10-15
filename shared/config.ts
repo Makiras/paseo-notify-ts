@@ -1,5 +1,6 @@
 import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
+import { messageTemplateSchema } from "./template-schema";
 
 export const channelKindSchema = z.enum([
   "webhook",
@@ -152,6 +153,7 @@ export const configSchema = z
         previewCharacters: z.number().int().min(80).max(2000).default(600),
         maxAttempts: z.number().int().min(1).max(12).default(5),
         retentionDays: z.number().int().min(1).max(30).default(7),
+        template: messageTemplateSchema.prefault({}),
       })
       .prefault({}),
     channels: z.array(channelSchema).max(20).default([]),
@@ -182,8 +184,7 @@ export const configSchema = z
 export type Config = z.infer<typeof configSchema>;
 export const defaultConfig = (): Config => configSchema.parse({});
 export function migrateSettings(values: unknown, fromVersion: number): Config {
-  if (fromVersion !== 1 && fromVersion !== 2 && fromVersion !== 3)
-    throw new Error("不支持的设置格式");
+  if (![1, 2, 3, 4].includes(fromVersion)) throw new Error("不支持的设置格式");
   const config = configSchema.parse(values);
   // Preserve the previous fan-out for existing installations only.
   if (fromVersion === 1) config.routing.host = config.channels.map((c) => c.id);
@@ -192,7 +193,7 @@ export function migrateSettings(values: unknown, fromVersion: number): Config {
 export const preferences = defineSettings({
   id: "notifier",
   scope: "host",
-  version: 4,
+  version: 5,
   schema: configSchema,
   migrate: migrateSettings,
 });

@@ -31,6 +31,8 @@ try {
   const paths = metadata.files.map((file) => file.path);
   assert.ok(paths.includes("LICENSE"));
   assert.ok(paths.includes("paseo-plugin.json"));
+  assert.ok(paths.includes("shared/vendor/re2js.js"));
+  assert.ok(paths.includes("shared/vendor/re2js.LICENSE"));
   assert.equal(
     paths.some((file) =>
       /(^|\/)(node_modules|\.git|\.state|dist|coverage|tests)(\/|$)|(^|\/)(\.env[^/]*|credentials\.json|operations\.json|owner\.lock|reap\.lock)$/.test(

@@ -11,6 +11,10 @@ import {
 } from "../server/channels";
 import { channelSchema, type Channel } from "../shared/config";
 import type { Notification } from "../shared/contracts";
+import {
+  defaultMessageTemplate,
+  extractionExamples,
+} from "../shared/template-schema";
 
 const notice: Notification = {
   id: "notice-1",
@@ -32,6 +36,78 @@ const credentials = {
 const channel = (kind: Channel["kind"]) =>
   channelSchema.parse({ id: kind, name: kind, kind });
 describe("notification transports", () => {
+  it.each([
+    "webhook",
+    "feishu",
+    "wecom",
+    "telegram",
+    "dingtalk",
+    "bark",
+    "ntfy",
+    "slack",
+    "discord",
+  ] as const)("uses the saved template on %s", (kind) => {
+    const format = {
+      template: {
+        ...defaultMessageTemplate(),
+        title: "自定义 · {{title}}",
+        body: "编号：{{custom.ticket}}",
+        rules: [extractionExamples[0]!.rule],
+      },
+      includePreview: true,
+      previewCharacters: 600,
+    };
+    const payload = JSON.parse(
+      buildRequest(
+        channel(kind),
+        { ...credentials, target: "topic" },
+        { ...notice, preview: "工单 PROJ-123" },
+        0,
+        format,
+      ).body,
+    );
+    const text =
+      kind === "webhook" || kind === "telegram" || kind === "slack"
+        ? payload.text
+        : kind === "feishu"
+          ? payload.content.text
+          : kind === "wecom" || kind === "dingtalk"
+            ? payload.text.content
+            : kind === "discord"
+              ? payload.content
+              : kind === "ntfy"
+                ? payload.message
+                : payload.body;
+    expect(text).toContain("编号：PROJ-123");
+    if (kind === "ntfy" || kind === "bark")
+      expect(payload.title).toBe("自定义 · 任务完成");
+    else expect(text).toContain("自定义 · 任务完成");
+    if (kind === "webhook")
+      expect(payload).toMatchObject({
+        title: notice.title,
+        summary: notice.summary,
+        message: { title: "自定义 · 任务完成", body: "编号：PROJ-123" },
+      });
+  });
+  it("removes disabled previews from both webhook fields and rendered extractions", () => {
+    const template = {
+      ...defaultMessageTemplate(),
+      body: "{{preview}}\n{{custom.ticket}}",
+      rules: [extractionExamples[0]!.rule],
+    };
+    const payload = JSON.parse(
+      buildRequest(
+        channel("webhook"),
+        credentials,
+        { ...notice, preview: "PROJ-SECRET" },
+        0,
+        { template, includePreview: false, previewCharacters: 600 },
+      ).body,
+    );
+    expect(payload.preview).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain("PROJ-SECRET");
+    expect(payload.message.body).toBe("未提供工单号");
+  });
   it("signs DingTalk with a millisecond timestamp, URL encoding, and no mentions", () => {
     const req = buildRequest(
       channel("dingtalk"),
@@ -147,7 +223,7 @@ describe("notification transports", () => {
           },
           notice,
           new AbortController().signal,
-          fetcher,
+          { fetcher },
         ),
       ).resolves.toBeUndefined();
     },
@@ -176,7 +252,7 @@ describe("notification transports", () => {
         },
         notice,
         new AbortController().signal,
-        fetcher,
+        { fetcher },
       ),
     ).rejects.toMatchObject({
       retryable: true,
@@ -194,7 +270,7 @@ describe("notification transports", () => {
         { ...credentials, url: "https://discord.com/api/webhooks/123/token" },
         notice,
         new AbortController().signal,
-        discord,
+        { fetcher: discord },
       ),
     ).rejects.toMatchObject({ retryAfterMs: 1500, retryable: true });
     const bark = vi.fn(
@@ -206,7 +282,7 @@ describe("notification transports", () => {
         { ...credentials, url: "https://api.day.app/key" },
         notice,
         new AbortController().signal,
-        bark,
+        { fetcher: bark },
       ),
     ).rejects.toMatchObject({ retryable: false });
   });
@@ -254,8 +330,7 @@ describe("notification transports", () => {
         { ...credentials, url: `http://127.0.0.1:${address.port}/notify` },
         notice,
         new AbortController().signal,
-        undefined,
-        notice.createdAt,
+        { now: notice.createdAt },
       );
       expect(JSON.parse(received!.body)).toMatchObject({
         schema: "paseo-notifier/v1",
@@ -312,7 +387,7 @@ describe("notification transports", () => {
           { ...credentials, url },
           notice,
           new AbortController().signal,
-          fetcher,
+          { fetcher },
         ),
       ).rejects.toMatchObject({ retryable });
     },
@@ -331,7 +406,7 @@ describe("notification transports", () => {
         credentials,
         notice,
         new AbortController().signal,
-        fetcher,
+        { fetcher },
       ),
     ).rejects.toMatchObject({ message: "HTTP 429", retryAfterMs: 120000 });
     const broken = vi.fn(async () => {
@@ -343,7 +418,7 @@ describe("notification transports", () => {
         credentials,
         notice,
         new AbortController().signal,
-        broken,
+        { fetcher: broken },
       ),
     ).rejects.toMatchObject({ message: "网络连接失败或请求超时" });
   });

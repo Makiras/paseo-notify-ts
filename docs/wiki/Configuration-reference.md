@@ -1,18 +1,21 @@
 # 配置参考
 
-普通配置使用 Paseo Host 范围的 `notifier` 设置，当前设置格式版本为 4。源码定义在 [`shared/config.ts`](https://github.com/Makiras/paseo-notify-ts/blob/main/shared/config.ts)。推荐通过界面修改，避免绕过并发版本校验。
+普通配置使用 Paseo Host 范围的 `notifier` 设置，当前设置格式版本为 5。源码定义在 [`shared/config.ts`](https://github.com/Makiras/paseo-notify-ts/blob/main/shared/config.ts)。推荐通过界面修改，避免绕过并发版本校验。
 
 ## 全局与通知
 
-| 字段                              | 默认值  | 约束 / 含义                                    |
-| --------------------------------- | ------- | ---------------------------------------------- |
-| `enabled`                         | `true`  | 通知与恢复总开关；测试发送独立                 |
-| `includeSubagents`                | `false` | 是否包含普通子代理；插件自己的复核代理始终排除 |
-| `updates.checkAutomatically`      | `true`  | 打开设置页时检查正式 Release；不自动安装       |
-| `notifications.includePreview`    | `false` | 是否携带最终回复截取内容                       |
-| `notifications.previewCharacters` | `600`   | 80–2000 字符                                   |
-| `notifications.maxAttempts`       | `5`     | 单条投递 1–12 次                               |
-| `notifications.retentionDays`     | `7`     | 已结束运行记录保留 1–30 天                     |
+| 字段                              | 默认值              | 约束 / 含义                                                                      |
+| --------------------------------- | ------------------- | -------------------------------------------------------------------------------- |
+| `enabled`                         | `true`              | 通知与恢复总开关；测试发送独立                                                   |
+| `includeSubagents`                | `false`             | 是否包含普通子代理；插件自己的复核代理始终排除                                   |
+| `updates.checkAutomatically`      | `true`              | 打开设置页时检查正式 Release；不自动安装                                         |
+| `notifications.includePreview`    | `false`             | 是否携带最终回复截取内容                                                         |
+| `notifications.previewCharacters` | `600`               | 80–2000 字符                                                                     |
+| `notifications.maxAttempts`       | `5`                 | 单条投递 1–12 次                                                                 |
+| `notifications.retentionDays`     | `7`                 | 已结束运行记录保留 1–30 天                                                       |
+| `notifications.template.title`    | `Paseo · {{event}}` | 标题模板，1–300 字符                                                             |
+| `notifications.template.body`     | 内置正文            | 正文模板，1–6000 字符；见[消息模板](Message-templates.md)                        |
+| `notifications.template.rules`    | `[]`                | 最多 12 条规则，字段为 `name`、`source`、`pattern`、`flags`、`group`、`fallback` |
 
 ## 自动恢复与复核
 
@@ -64,6 +67,6 @@
 
 ## 格式迁移
 
-从格式版本 1 迁移时，原有广播行为转换为全部已有渠道的 Host 默认选择；版本 2 → 3 增加任务绑定并保留原默认；版本 3 → 4 增加更新偏好，默认开启检查。迁移不触发通知测试，也不会启用原本关闭的恢复与复核。
+从格式版本 1 迁移时，原有广播行为转换为全部已有渠道的 Host 默认选择；版本 2 → 3 增加任务绑定并保留原默认；版本 3 → 4 增加更新偏好，默认开启检查；版本 4 → 5 补充默认消息模板和空提取规则。迁移不触发通知测试，也不会启用原本关闭的恢复、复核或回复摘要。
 
 剪贴板文件使用独立的 `paseo-notify-ts/config`、版本 1 包装，省略本地绑定及工作区过滤，见[导入导出](Configuration-transfer.md)。配置版本和插件发布版本是不同概念。

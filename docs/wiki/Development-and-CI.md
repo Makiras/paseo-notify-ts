@@ -19,7 +19,9 @@ npm run package
 
 `host:smoke` 使用官方 bundle 执行器、设置存储和任务存储，验证配置迁移、保存后 RPC 顺序、任务元数据与通知路由；会话 SDK 和外部发送使用替身，不运行真实 AI、不发送实际通知。
 
-`package` 用 npm 白名单生成 `.tgz`，检查排除项，在没有开发依赖的解压目录用宿主编译器验证双入口，并写入 SHA-256 与 `release.json`。`package:check` 做同样验证但不保留输出。安装包包含插件源码、概述、README、许可证及 Wiki 源文件，不包含凭据、运行数据、依赖或测试。
+`package` 用 npm 白名单生成 `.tgz`，检查排除项，在没有开发依赖的解压目录用宿主编译器验证双入口，并写入 SHA-256 与 `release.json`。`package:check` 做同样验证但不保留输出。安装包包含插件源码、内嵌正则引擎、概述、README、许可证及 Wiki 源文件，不包含凭据、运行数据、node_modules 或测试。
+
+模板在客户端预览与服务端发送时共用 `shared/templates.ts`。自定义正则使用固定版本 RE2JS，Pattern、编译程序规模、规则数和来源长度均有上限，不交给原生回溯正则引擎执行。引擎及类型、MIT 许可内嵌在 `shared/vendor/`，宿主无需安装额外 npm 包。更新开发依赖后运行 `npm run vendor:update` 重新生成；`check` 中的 `vendor:check` 核对生成结果与锁定依赖一致。模板及提取值不写入投递日志副本，发送时用当前设置渲染，并再次应用摘要隐私限制。
 
 ## CI
 

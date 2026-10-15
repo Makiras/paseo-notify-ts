@@ -7,7 +7,7 @@ export const settingsSections = [
   { value: "channels", label: "通知渠道" },
   { value: "schedules", label: "定时任务" },
   { value: "recovery", label: "自动恢复" },
-  { value: "notifications", label: "通知选项" },
+  { value: "notifications", label: "通知管理" },
   { value: "transfer", label: "导入导出" },
   { value: "activity", label: "运行状态" },
   { value: "updates", label: "版本更新" },

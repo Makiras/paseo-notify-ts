@@ -10,6 +10,7 @@
 - [通知去向与继承](Notification-routing.md)
 - [定时任务](Scheduled-tasks.md)
 - [通知事件与内容](Notifications.md)
+- [消息模板与 Pattern](Message-templates.md)
 - [自动恢复](Automatic-recovery.md)
 - [AI 复核](AI-review.md)
 - [跨 Host 导入导出](Configuration-transfer.md)

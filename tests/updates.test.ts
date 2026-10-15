@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Updates, officialInstallation } from "../server/updates";
 import { updateRunner } from "../server/update-runner";
-import { newerVersion, stableVersion } from "../shared/version";
+import { newerVersion, stableVersion, pluginVersion } from "../shared/version";
 import { defaultConfig, migrateSettings } from "../shared/config";
 import type { PaseoApi } from "../server/types";
 
@@ -24,9 +24,10 @@ const preview = {
   current: installation,
   target: { kind: "git", commit: "b".repeat(40) },
 };
+const futureTag = `v${Number(pluginVersion.split(".")[0]) + 1}.0.0`;
 const release = {
   id: 42,
-  tag_name: "v0.3.0",
+  tag_name: futureTag,
   draft: false,
   prerelease: false,
   published_at: "2026-10-15T00:00:00Z",
@@ -110,7 +111,7 @@ describe("release checks", () => {
     expect(statuses[0]).toMatchObject({
       available: true,
       canInstall: true,
-      release: { tag: "v0.3.0" },
+      release: { tag: futureTag },
     });
     advance(100000);
     await service.check(false, true);
@@ -196,7 +197,7 @@ describe("manual installation", () => {
     await service.check(true, true);
     await service.install(paseo, {
       releaseId: 42,
-      tag: "v0.3.0",
+      tag: futureTag,
       workspaceId: "workspace-a",
     });
     expect(deps.cli).toHaveBeenCalledWith("/usr/bin/paseo", [
@@ -206,7 +207,7 @@ describe("manual installation", () => {
       "--home",
       "/home/test/.paseo",
       "--ref",
-      "v0.3.0",
+      futureTag,
       "--check",
       "--json",
     ]);
@@ -225,7 +226,7 @@ describe("manual installation", () => {
     await expect(
       service.install(paseo, {
         releaseId: 42,
-        tag: "v0.3.0",
+        tag: futureTag,
         workspaceId: "workspace-a",
       }),
     ).rejects.toThrow("终端");
@@ -237,7 +238,7 @@ describe("manual installation", () => {
     await expect(
       service.install(paseo, {
         releaseId: 41,
-        tag: "v0.3.0",
+        tag: futureTag,
         workspaceId: "workspace-a",
       }),
     ).rejects.toThrow();
@@ -254,7 +255,7 @@ describe("manual installation", () => {
     await expect(
       service.install(paseo, {
         releaseId: 42,
-        tag: "v0.3.0",
+        tag: futureTag,
         workspaceId: "workspace-a",
       }),
     ).rejects.toThrow();
@@ -269,7 +270,7 @@ describe("manual installation", () => {
           finish = resolve;
         }),
     );
-    const input = { releaseId: 42, tag: "v0.3.0", workspaceId: "workspace-a" };
+    const input = { releaseId: 42, tag: futureTag, workspaceId: "workspace-a" };
     const first = service.install(paseo, input);
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     await expect(service.install(paseo, input)).rejects.toThrow("正在准备");
@@ -282,14 +283,14 @@ describe("manual installation", () => {
       entries: [
         {
           id: "previous",
-          name: "Notifier update v0.3.0",
+          name: `Notifier update ${futureTag}`,
           workspaceId: "workspace-a",
           cwd: "/tmp",
         },
       ],
       requestId: "list",
     });
-    const input = { releaseId: 42, tag: "v0.3.0", workspaceId: "workspace-a" };
+    const input = { releaseId: 42, tag: futureTag, workspaceId: "workspace-a" };
     await expect(service.install(paseo, input)).rejects.toThrow("已有更新终端");
     service.close();
     await expect(service.install(paseo, input)).rejects.toThrow("插件已停止");
@@ -309,7 +310,7 @@ describe("manual installation", () => {
         cli,
         path: process.env.PATH,
         home: "/tmp/a 'quoted' home $(nothing)",
-        tag: "v0.3.0",
+        tag: futureTag,
         commit: "b".repeat(40),
         expectedRevision: "a".repeat(40),
         identity: installation.identity,
@@ -327,7 +328,7 @@ describe("manual installation", () => {
       expect(calls).toHaveLength(2);
       expect(calls[1]).toContain(input.home);
       expect(calls[1]).toContain("b".repeat(40));
-      expect(calls[1]).not.toContain("v0.3.0");
+      expect(calls[1]).not.toContain(futureTag);
       await expect(
         promisify(execFile)(
           process.execPath,

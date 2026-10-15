@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Runtime } from "../server/runtime";
 import type { PaseoPort, AgentView } from "../server/paseo";
-import { DeliveryError } from "../server/channels";
+import { buildRequest, deliver, DeliveryError } from "../server/channels";
 import { config, event, memory, agent } from "./fixtures";
 import { channelSchema } from "../shared/config";
 import type { ReviewDecision, ReviewRequest } from "../server/reviewer";
@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 async function setup(reviewEnabled = false) {
   const store = memory();
-  const sent = vi.fn(async () => {});
+  const sent = vi.fn<typeof deliver>(async () => {});
   const c = config();
   c.recovery.review.enabled = reviewEnabled;
   const r = new Runtime(
@@ -86,6 +86,35 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it("uses current saved templates for queued deliveries and immediate channel tests", async () => {
+    const s = await setup();
+    await s.r.turnEnded(event({ kind: "completed" }));
+    s.c.notifications.template.title = "更新模板 · {{event}}";
+    s.c.notifications.template.body = "任务：{{title}} / {{summary}}";
+    await s.r.configure(s.c);
+    await vi.advanceTimersByTimeAsync(1000);
+    const first = s.sent.mock.calls[0]!;
+    const normal = JSON.parse(
+      buildRequest(first[0], first[1], first[2], Date.now(), first[4]?.format)
+        .body,
+    );
+    expect(normal.message).toEqual({
+      title: "更新模板 · 任务完成",
+      body: "任务：检查项目 / 请在 Paseo 查看任务结果。",
+    });
+    expect(await s.r.testChannel("hook-a")).toMatchObject({ ok: true });
+    const last = s.sent.mock.calls.at(-1)!;
+    const test = JSON.parse(
+      buildRequest(last[0], last[1], last[2], Date.now(), last[4]?.format).body,
+    );
+    expect(test.message).toEqual({
+      title: "更新模板 · 测试通知",
+      body: "任务：Paseo 通知连接测试 / 通知渠道已连通。",
+    });
+    expect(s.store.state.read().deliveries[0]!.notice).not.toHaveProperty(
+      "message",
+    );
+  });
   it("sends multiple scheduled runs and permission requests to the bound channel", async () => {
     const s = await setup();
     s.c.channels.push(

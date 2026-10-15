@@ -107,13 +107,36 @@ try {
   assert.equal(current.status, "ready");
   assert.deepEqual(current.values.routing.host, ["legacy"]);
   assert.equal(
+    current.values.notifications.template.title,
+    "Paseo · {{event}}",
+  );
+  assert.deepEqual(current.values.notifications.template.rules, []);
+  assert.equal(current.values.notifications.includePreview, false);
+  assert.equal(
     JSON.parse(
       await readFile(join(directory, "settings", "notifier.json"), "utf8"),
     ).version,
-    4,
+    5,
   );
   const values = {
     ...current.values,
+    notifications: {
+      ...current.values.notifications,
+      template: {
+        title: "检查 · {{event}}",
+        body: "工单：{{custom.ticket}}",
+        rules: [
+          {
+            name: "ticket",
+            source: "title",
+            pattern: "工单：([A-Z]+-[0-9]+)",
+            flags: "",
+            group: 1,
+            fallback: "未提供",
+          },
+        ],
+      },
+    },
     channels: [
       {
         id: "local",
@@ -146,6 +169,10 @@ try {
     values,
   });
   assert.equal(saved.status, "saved");
+  assert.deepEqual(
+    saved.values.notifications.template,
+    values.notifications.template,
+  );
   await invoke("notifier.credentials.save", {
     id: "local",
     kind: "webhook",
@@ -167,6 +194,10 @@ try {
   assert.equal(ordinary.text.includes("private-smoke-value"), false);
   assert.deepEqual(JSON.parse(ordinary.text).config.routing.workspaces, {});
   assert.deepEqual(JSON.parse(ordinary.text).config.routing.schedules, {});
+  assert.deepEqual(
+    JSON.parse(ordinary.text).config.notifications.template,
+    values.notifications.template,
+  );
   const full = await invoke("notifier.config.export", {
     revision: transferSettings.revision,
     includeCredentials: true,

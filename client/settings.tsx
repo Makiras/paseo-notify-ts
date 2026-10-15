@@ -45,6 +45,7 @@ import { ConfigTransfer } from "./transfer";
 import { withoutChannel } from "../shared/routing";
 import { ScheduleSelection } from "./schedules";
 import { UpdatesPanel } from "./updates";
+import { MessageTemplates } from "./message-templates";
 import {
   createSettingsNavigation,
   SectionNavigation,
@@ -620,6 +621,15 @@ function Editor({
               />
             </SettingsCard>
           </SettingsSection>
+          <MessageTemplates
+            value={draft.notifications.template}
+            notifications={draft.notifications}
+            theme={theme}
+            disabled={busy || transferBusy}
+            onChange={(template) =>
+              patch({ notifications: { ...draft.notifications, template } })
+            }
+          />
         </SettingsPanel>
       </View>
       <SettingsPanel active={section === "transfer"}>

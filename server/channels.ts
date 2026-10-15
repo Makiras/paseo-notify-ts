@@ -1,7 +1,11 @@
 import { createHmac } from "node:crypto";
 import type { Channel } from "../shared/config";
-import { noticeLabels } from "../shared/config";
 import type { Credentials, Notification } from "../shared/contracts";
+import {
+  renderNotification,
+  visibleNotification,
+  type MessageFormat,
+} from "../shared/templates";
 
 // A narrow transport port avoids depending on DOM or undici declaration packages
 // in a plugin installed without development dependencies.
@@ -154,25 +158,17 @@ function truncateCharacters(text: string, limit: number): string {
   return text.slice(0, limit - 2).replace(/[\uD800-\uDBFF]$/, "") + "…";
 }
 export function renderText(notice: Notification): string {
-  return [
-    `Paseo · ${noticeLabels[notice.kind]}`,
-    notice.title,
-    notice.summary,
-    notice.preview,
-    notice.attempts > 0 ? `自动恢复尝试：${notice.attempts} 次` : "",
-    `会话：${notice.agentId}`,
-    `提供方：${notice.provider}`,
-    new Date(notice.createdAt).toISOString(),
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return renderNotification(notice).text;
 }
 export function buildRequest(
   channel: Channel,
   credentials: Credentials,
   notice: Notification,
   now: number,
+  format?: MessageFormat,
 ) {
+  notice = visibleNotification(notice, format);
+  const message = renderNotification(notice, format);
   const url = new URL(credentials.url);
   const headers: Record<string, string> = {
     ...credentials.headers,
@@ -184,10 +180,7 @@ export function buildRequest(
     payload = {
       msg_type: "text",
       content: {
-        text: truncateUtf8(
-          renderText(notice).replace(/<at\b/gi, "〈at"),
-          12_000,
-        ),
+        text: truncateUtf8(message.text.replace(/<at\b/gi, "〈at"), 12_000),
       },
       ...(credentials.signingSecret
         ? {
@@ -199,12 +192,12 @@ export function buildRequest(
   } else if (channel.kind === "wecom") {
     payload = {
       msgtype: "text",
-      text: { content: truncateUtf8(renderText(notice), 2048) },
+      text: { content: truncateUtf8(message.text, 2048) },
     };
   } else if (channel.kind === "dingtalk") {
     payload = {
       msgtype: "text",
-      text: { content: truncateUtf8(renderText(notice), 4000) },
+      text: { content: truncateUtf8(message.text, 4000) },
       at: { isAtAll: false },
     };
     if (credentials.signingSecret) {
@@ -220,7 +213,7 @@ export function buildRequest(
     url.pathname = `${url.pathname.replace(/\/$/, "")}/bot${credentials.bearerToken}/sendMessage`;
     payload = {
       chat_id: credentials.target,
-      text: truncateCharacters(renderText(notice), 4096),
+      text: truncateCharacters(message.text, 4096),
       link_preview_options: { is_disabled: true },
       ...(credentials.threadId
         ? { message_thread_id: Number(credentials.threadId) }
@@ -228,18 +221,18 @@ export function buildRequest(
     };
   } else if (channel.kind === "bark") {
     payload = {
-      title: `Paseo · ${noticeLabels[notice.kind]}`,
-      body: truncateUtf8(renderText(notice), 2500),
+      title: message.title,
+      body: truncateUtf8(message.body, 2500),
       group: "Paseo",
     };
   } else if (channel.kind === "ntfy") {
     payload = {
       topic: credentials.target,
-      title: truncateCharacters(`Paseo · ${notice.title}`, 200),
-      message: truncateUtf8(renderText(notice), 3500),
+      title: message.title,
+      message: truncateUtf8(message.body, 3500),
     };
   } else if (channel.kind === "slack") {
-    const text = truncateCharacters(renderText(notice), 2900)
+    const text = truncateCharacters(message.text, 2900)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
@@ -253,7 +246,7 @@ export function buildRequest(
   } else if (channel.kind === "discord") {
     url.searchParams.set("wait", "true");
     payload = {
-      content: truncateCharacters(renderText(notice), 2000),
+      content: truncateCharacters(message.text, 2000),
       allowed_mentions: { parse: [] },
       flags: 4,
     };
@@ -261,7 +254,8 @@ export function buildRequest(
     payload = {
       schema: "paseo-notifier/v1",
       ...notice,
-      text: renderText(notice),
+      text: message.text,
+      message: { title: message.title, body: message.body },
     };
     headers["Idempotency-Key"] = notice.id;
     headers["X-Paseo-Event-Id"] = notice.id;
@@ -302,11 +296,18 @@ export async function deliver(
   credentials: Credentials,
   notice: Notification,
   signal: AbortSignal,
-  fetcher: Fetch = globalThis.fetch as Fetch,
-  now = Date.now(),
+  options: { fetcher?: Fetch; now?: number; format?: MessageFormat } = {},
 ): Promise<void> {
+  const fetcher = options.fetcher ?? (globalThis.fetch as Fetch);
+  const now = options.now ?? Date.now();
   validateCredentials(channel.kind, credentials);
-  const { url, ...request } = buildRequest(channel, credentials, notice, now);
+  const { url, ...request } = buildRequest(
+    channel,
+    credentials,
+    notice,
+    now,
+    options.format,
+  );
   try {
     const response = await fetcher(url, {
       method: "POST",

@@ -19,11 +19,15 @@
   "summary": "任务已完成",
   "attempts": 0,
   "createdAt": 1792022400000,
-  "text": "Paseo · 任务完成\n检查项目\n任务已完成"
+  "text": "Paseo · 任务完成\n检查项目\n任务已完成",
+  "message": {
+    "title": "Paseo · 任务完成",
+    "body": "检查项目\n任务已完成"
+  }
 }
 ```
 
-`text` 是供人阅读的文本，接收程序应使用结构化字段。`preview` 仅在启用摘要并有内容时出现；`failure` 在相关失败事件出现。普通会话的 `scheduleId` 可为 `null` 或省略。`createdAt` 是 Unix 毫秒，`attempts` 是任务恢复次数，不是 HTTP 投递次数。
+`text` 是当前[消息模板](Message-templates.md)渲染出的标题加正文，`message.title` 和 `message.body` 是分别渲染的内容。原有 `title`、`summary` 等事件字段保持原义，程序处理应使用这些字段。`preview` 仅在启用摘要并有内容时出现，即使模板中不引用它；`failure` 在相关失败事件出现。普通会话的 `scheduleId` 可为 `null` 或省略。`createdAt` 是 Unix 毫秒，`attempts` 是任务恢复次数，不是 HTTP 投递次数。
 
 `kind` 可为 `completed`、`recovered`、`failed`、`blocked`、`permission`、`test`。`failure` 可为 `network`、`overloaded`、`rate_limited`、`quota_exhausted`、`context_exhausted`、`policy_blocked`、`unknown`。
 

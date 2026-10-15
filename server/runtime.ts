@@ -326,6 +326,7 @@ export class Runtime {
           attempts: 0,
         },
         AbortSignal.any([controller.signal, this.controller.signal]),
+        { format: this.config.notifications },
       );
       return { ok: true, message: "平台已接受测试通知" };
     } catch (error) {
@@ -1174,6 +1175,7 @@ export class Runtime {
         secret.values,
         d.notice,
         AbortSignal.any([signal, this.controller.signal]),
+        { format: this.config.notifications },
       );
     } catch (e) {
       error =

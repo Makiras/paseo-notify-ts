@@ -20,6 +20,7 @@ Paseo Notifier 将任务结果发送到指定群组或通知服务，并为临�
 | --------------------------------------------- | ---------------------------------------------------- |
 | [通知渠道](Channels.md)                       | 九种平台的地址、Token 与接收目标填写方法             |
 | [通知事件与内容](Notifications.md)            | 完成、恢复、失败、权限通知，回复摘要与投递重试       |
+| [消息模板与 Pattern](Message-templates.md)    | 默认模板、内置占位符、正则提取、示例和预览           |
 | [通知去向与继承](Notification-routing.md)     | Host、工作区与会话的入口、多选、继承和关闭通知       |
 | [定时任务](Scheduled-tasks.md)                | 给 Schedule 绑定固定渠道，区分 Schedule 与 Heartbeat |
 | [自动恢复](Automatic-recovery.md)             | 可重试异常、次数与时间预算、停止条件                 |

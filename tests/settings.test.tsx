@@ -101,6 +101,144 @@ async function selectSection(section: string) {
   );
 }
 describe("native settings drafts", () => {
+  it("explains templates on the page, adds working examples, and saves the draft across sections", async () => {
+    await render();
+    await selectSection("notifications");
+    expect(
+      isVisible(renderer.root.findByProps({ label: "Pattern 如何填写" })),
+    ).toBe(true);
+    expect(
+      renderer.root.findByProps({ label: "Pattern 如何填写" }).props.hint,
+    ).toContain("组 1");
+    await act(async () =>
+      renderer.root
+        .findByProps({ actionLabel: "展开字段说明" })
+        .props.onPress(),
+    );
+    expect(
+      renderer.root.findByProps({ label: "{{summary}}" }).props.hint,
+    ).toContain("不是 AI 回复");
+    await act(async () =>
+      renderer.root
+        .findByProps({ label: "附带最终回复摘要" })
+        .props.onValueChange(true),
+    );
+    await act(async () =>
+      renderer.root
+        .findByProps({ actionLabel: "添加工单号示例" })
+        .props.onPress(),
+    );
+    await act(async () =>
+      renderer.root
+        .findByProps({ actionLabel: "添加结果链接示例" })
+        .props.onPress(),
+    );
+    expect(
+      renderer.root.findByProps({ label: "{{custom.ticket}} · 已匹配" }).props
+        .hint,
+    ).toBe("PROJ-123");
+    expect(
+      renderer.root.findByProps({ label: "{{custom.link}} · 已匹配" }).props
+        .hint,
+    ).toBe("https://example.com/result/123");
+    const input = () =>
+      renderer.root.findByProps({ accessibilityLabel: "正文模板" });
+    const before = input().props.value;
+    await selectSection("channels");
+    await selectSection("notifications");
+    expect(input().props.value).toBe(before);
+    await act(async () =>
+      renderer.root.findByProps({ actionLabel: "保存设置" }).props.onPress(),
+    );
+    expect(state.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notifications: expect.objectContaining({
+          template: expect.objectContaining({
+            body: before,
+            rules: [
+              expect.objectContaining({ name: "ticket" }),
+              expect.objectContaining({ name: "link", group: 1 }),
+            ],
+          }),
+        }),
+      }),
+      "r1",
+    );
+  });
+  it("blocks malformed patterns and routes the error action back to notification management", async () => {
+    await render();
+    await selectSection("notifications");
+    await act(async () =>
+      renderer.root
+        .findByProps({ actionLabel: "添加工单号示例" })
+        .props.onPress(),
+    );
+    await act(async () =>
+      renderer.root
+        .findByProps({ accessibilityLabel: "Pattern 表达式" })
+        .props.onChangeText("("),
+    );
+    expect(
+      renderer.root.findByProps({ actionLabel: "保存设置" }).props.disabled,
+    ).toBe(true);
+    expect(
+      renderer.root.findByProps({ label: "模板需要修改" }).props.error,
+    ).toContain("Pattern 无效");
+    await selectSection("channels");
+    await act(async () =>
+      renderer.root.findByProps({ actionLabel: "前往修改" }).props.onPress(),
+    );
+    expect(renderer.root.findByProps({ label: "设置栏目" }).props.value).toBe(
+      "notifications",
+    );
+    expect(
+      isVisible(renderer.root.findByProps({ label: "模板需要修改" })),
+    ).toBe(true);
+  });
+  it("keeps reply samples local and respects the preview privacy switch", async () => {
+    await render();
+    await selectSection("notifications");
+    await act(async () =>
+      renderer.root
+        .findByProps({ actionLabel: "添加工单号示例" })
+        .props.onPress(),
+    );
+    expect(
+      renderer.root.findByProps({ label: "{{custom.ticket}} · 使用默认值" })
+        .props.hint,
+    ).toBe("未提供工单号");
+    await act(async () =>
+      renderer.root
+        .findByProps({ accessibilityLabel: "示例回复" })
+        .props.onChangeText("LOCAL-999"),
+    );
+    await act(async () =>
+      renderer.root
+        .findByProps({ label: "附带最终回复摘要" })
+        .props.onValueChange(true),
+    );
+    expect(
+      renderer.root.findByProps({ label: "{{custom.ticket}} · 已匹配" }).props
+        .hint,
+    ).toBe("LOCAL-999");
+    await act(async () =>
+      renderer.root.findByProps({ actionLabel: "保存设置" }).props.onPress(),
+    );
+    expect(JSON.stringify(vi.mocked(state.save).mock.calls)).not.toContain(
+      "LOCAL-999",
+    );
+    await act(async () =>
+      renderer.root
+        .findByProps({ actionLabel: "使用默认模板" })
+        .props.onPress(),
+    );
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: "正文模板" }).props.value,
+    ).not.toContain("custom.ticket");
+    expect(
+      renderer.root.findByProps({ label: "编辑提取规则" }).props.options,
+    ).toHaveLength(1);
+  });
   it("shows one section at a time on compact layouts and keeps save available", async () => {
     await render();
     expect(isVisible(renderer.root.findByProps({ title: "渠道管理" }))).toBe(
