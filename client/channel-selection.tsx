@@ -24,7 +24,7 @@ export function ChannelSelection({
       {inheritable && (
         <SettingsSwitch
           label="跟随上级"
-          hint="未单独选择时，自动跟随上级之后的修改"
+          hint="使用上级设置的通知渠道。上级以后更换渠道，这里也会一起变化。"
           value={value === undefined}
           disabled={disabled}
           onValueChange={(inherit) => onChange(inherit ? undefined : [])}
@@ -34,10 +34,10 @@ export function ChannelSelection({
         <>
           {!value.length && (
             <SettingsRow
-              label={inheritable ? "本层已关闭通知" : "Host 尚未选择默认渠道"}
+              label={inheritable ? "此处已关闭通知" : "还没有默认通知渠道"}
               hint={
                 inheritable
-                  ? "不会回退到上级渠道；下级仍可单独选择"
+                  ? "选择下方渠道可重新开启通知，或打开“跟随上级”。更具体的工作区或会话设置仍然优先。"
                   : "在下方选择默认渠道，可多选"
               }
             />
@@ -60,7 +60,7 @@ export function ChannelSelection({
           ))}
           {value.length > 0 && (
             <SettingsAction
-              label="清空本层选择"
+              label="取消这里选择的所有渠道"
               actionLabel="关闭通知"
               disabled={disabled}
               onPress={() => onChange([])}
@@ -70,8 +70,8 @@ export function ChannelSelection({
       )}
       {!channels.length && (
         <SettingsRow
-          label="尚未注册通知渠道"
-          hint="先到插件设置页添加渠道和凭据"
+          label="还没有通知渠道"
+          hint="先到插件的“通知渠道”页面添加渠道，并保存连接信息。"
         />
       )}
     </SettingsCard>

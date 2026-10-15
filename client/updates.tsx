@@ -123,13 +123,13 @@ export function UpdatesPanel({
         />
         <SettingsSwitch
           label="打开设置时自动检查更新"
-          hint="只检查本仓库正式 Release，成功结果缓存 6 小时；安装始终由你点击触发。修改后保存设置。"
+          hint="有正式新版时显示提醒，由你决定是否安装。成功查到的结果保留 6 小时；点击“检查更新”可重新检查。"
           value={automatic}
           disabled={installing}
           onValueChange={onAutomaticChange}
         />
         <SettingsAction
-          label="检查正式 Release"
+          label="查找可安装的正式版本"
           actionLabel={checking ? "检查中…" : "检查更新"}
           disabled={checking || installing}
           onPress={() => void refresh(true)}
@@ -216,7 +216,7 @@ export function UpdatesPanel({
                 {workspaceId && (
                   <SettingsAction
                     label={`在 ${host.label} 安装 ${status.release?.tag}`}
-                    hint="官方 CLI 会先准备和校验，再切换版本。会短暂重载本插件。"
+                    hint="在所选工作区的终端中安装新版。安装完成时插件会短暂重新加载。"
                     actionLabel={
                       installing ? "正在启动…" : `安装 ${status.release?.tag}`
                     }

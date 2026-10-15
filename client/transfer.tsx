@@ -74,7 +74,7 @@ export function ConfigTransfer({
       <SettingsCard>
         <SettingsRow
           label="同步渠道与 Host 默认设置"
-          hint="保留目标 Host 已有渠道及定时任务 / Workspace / Session 绑定；不传输本地绑定、工作区过滤和运行记录。同一配置复用，冲突渠道另建。"
+          hint="把渠道和通用设置复制到另一台 Host（运行 Paseo 的电脑或服务器）。接收方原有的工作区、会话和定时任务通知选择会保留；这些选择和运行记录不会从本机复制过去。"
         />
         {disabled && (
           <SettingsRow
@@ -84,7 +84,7 @@ export function ConfigTransfer({
         )}
         <SettingsSwitch
           label="导出包含凭据"
-          hint="包括 Webhook 地址、Token 和目标群组；复制内容为明文，仅粘贴到你信任的 Host"
+          hint="一起复制机器人地址、密钥和接收群组，导入后无需重填。这些内容没有加密，请只粘贴到自己的 Host。"
           value={includeCredentials}
           disabled={blocked}
           onValueChange={(value) => {

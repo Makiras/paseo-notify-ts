@@ -22,6 +22,7 @@ import {
   type MessageTemplate,
 } from "../shared/template-schema";
 import { renderNotification } from "../shared/templates";
+import { validationMessage } from "./validation";
 
 type Theme = PluginSurfaceProps["theme"];
 
@@ -159,7 +160,7 @@ export function MessageTemplates({
                 : typeof issue.path[1] === "number"
                   ? `提取规则 ${issue.path[1] + 1}`
                   : "提取规则";
-          return `${label}：${issue.message}`;
+          return `${label}：${validationMessage(issue)}`;
         })
         .join("\n");
   const preview = useMemo(
@@ -227,13 +228,14 @@ export function MessageTemplates({
           (issue) =>
             issue.path[0] === "rules" && issue.path[1] === currentIndex,
         )
-        .map((issue) => issue.message)
+        .map(validationMessage)
         .join("\n");
   return (
     <>
       <SettingsSection title="消息模板">
         <Text style={{ color: theme.colors.foregroundMuted }}>
-          本 Host 的所有渠道共用此模板。修改后点顶部“保存设置”。
+          在这里决定通知写什么。这台 Host
+          的所有渠道共用，修改后点击顶部“保存设置”。
         </Text>
         {errors && (
           <SettingsCard>
@@ -272,7 +274,7 @@ export function MessageTemplates({
               />
               <Field
                 label="正文模板"
-                hint="使用 {{title}} 等占位符自动填充，支持换行；最多 6000 字符。"
+                hint="例如填写“任务：{{title}}”，发送时会换成实际会话标题。支持换行，最多 6000 字符。"
                 value={value.body}
                 onChange={(body) => patch({ body })}
                 theme={theme}
@@ -345,7 +347,7 @@ export function MessageTemplates({
               )}
               <SettingsSwitch
                 label="附带最终回复摘要"
-                hint={`开启后允许向渠道发送回复前 ${notifications.previewCharacters} 个字符，也供正则提取使用。`}
+                hint={`允许使用 AI 最终回复的前 ${notifications.previewCharacters} 个字符。正文写 {{preview}} 可显示这段回复，也可只提取其中的工单号等信息。关闭后，通知和提取规则都不使用这段回复。`}
                 value={notifications.includePreview}
                 disabled={disabled}
                 onValueChange={onPreviewChange}
@@ -353,7 +355,7 @@ export function MessageTemplates({
             </SettingsCard>
             <Details
               label="预览示例数据"
-              hint="只在本页预览，不保存、不发送，也不读取真实会话。"
+              hint="用一段示例回复试试模板效果。这里的示例不会发到群里，也不会保存到设置。"
               open={showSamples}
               onToggle={() => setShowSamples(!showSamples)}
               expandLabel="编辑示例数据"
@@ -386,8 +388,8 @@ export function MessageTemplates({
         </View>
       </SettingsSection>
       <Details
-        label={`自定义正则提取 · ${value.rules.length}/12`}
-        hint="按需提取工单号、链接等内容，使用 {{custom.变量名}} 填入模板。"
+        label={`从内容中提取信息 · ${value.rules.length}/12`}
+        hint="例如从回复中找出工单号 PROJ-123，再把它填到通知里。不需要提取时可以跳过。"
         open={showRules}
         onToggle={() => setShowRules(!showRules)}
         expandLabel="展开提取规则"
@@ -397,8 +399,8 @@ export function MessageTemplates({
           label="回复提取范围"
           hint={
             notifications.includePreview
-              ? `只读取允许发送的前 ${notifications.previewCharacters} 个回复字符。`
-              : "摘要当前关闭：回复规则会使用未匹配默认值。可在预览区开启“附带最终回复摘要”。"
+              ? `从回复的前 ${notifications.previewCharacters} 个字符中查找，超出的内容不会参与匹配。`
+              : "要从 AI 回复中提取内容，请先开启预览区的“附带最终回复摘要”。关闭时会显示规则中填写的默认值。"
           }
         />
         {extractionExamples.map((example) => (
@@ -439,7 +441,7 @@ export function MessageTemplates({
             />
             <Field
               label="变量名"
-              hint="例如 ticket；模板中使用 {{custom.ticket}}。小写字母开头，仅含字母、数字、下划线。"
+              hint="给结果起一个英文名，例如 ticket，然后在通知中写 {{custom.ticket}}。使用小写字母、数字或下划线，并以字母开头。"
               value={rule.name}
               onChange={(name) => patchRule({ name })}
               theme={theme}
@@ -456,8 +458,8 @@ export function MessageTemplates({
               }}
             />
             <Field
-              label="Pattern 表达式"
-              hint="只填表达式，不加 /.../；语法解释见下方“填写帮助”。"
+              label="匹配规则（Pattern）"
+              hint="填写用来查找内容的正则表达式，不加两端的 /。可以先添加上面的工单号或链接示例。"
               value={rule.pattern}
               onChange={(pattern) => patchRule({ pattern })}
               theme={theme}
@@ -472,8 +474,8 @@ export function MessageTemplates({
               />
             ) : null}
             <Field
-              label="捕获组"
-              hint="0：整个匹配；1：第一个括号；2：第二个括号，以此类推。"
+              label="提取哪一部分（捕获组）"
+              hint="填 0 使用完整匹配结果；填 1 只取第一个括号中的内容，填 2 取第二个。"
               value={Number.isNaN(rule.group) ? "" : String(rule.group)}
               onChange={(text) =>
                 patchRule({ group: text.trim() ? Number(text) : NaN })
@@ -505,7 +507,7 @@ export function MessageTemplates({
             ))}
             <Field
               label="未匹配默认值"
-              hint="留空表示空字符串。默认值中的占位符按普通文字处理。"
+              hint="找不到内容时显示什么，例如“未提供工单号”。留空则让这个变量保持为空。"
               value={rule.fallback}
               onChange={(fallback) => patchRule({ fallback })}
               theme={theme}
@@ -535,7 +537,7 @@ export function MessageTemplates({
       </Details>
       <Details
         label="占位符与填写帮助"
-        hint={`${templateFields.length} 个内置字段、正则语法与各渠道发送方式。`}
+        hint="不知道 {{title}} 等标记怎么用？展开查看含义、填写示例和匹配规则说明。"
         open={showHelp}
         onToggle={() => setShowHelp(!showHelp)}
         expandLabel="展开填写帮助"
@@ -543,7 +545,7 @@ export function MessageTemplates({
       >
         <SettingsRow
           label="占位符用法"
-          hint="使用双花括号，例如 {{title}}；自定义变量写作 {{custom.ticket}}。替换只执行一次，变量内容不再解析。"
+          hint="{{title}} 这样的标记会在发送时换成实际内容。例如“任务：{{title}}”会变成“任务：每日构建检查”。自己提取的工单号可写成 {{custom.ticket}}。"
         />
         {templateFields.map(([name, description]) => (
           <SettingsRow key={name} label={`{{${name}}}`} hint={description} />
@@ -560,7 +562,7 @@ export function MessageTemplates({
         />
         <SettingsRow
           label="发送方式"
-          hint="ntfy 和 Bark 分别使用标题、正文；其他聊天渠道把标题放在正文第一行。模板是纯文本，不执行脚本。仅含空占位符的行会省略；整段为空时使用默认事件标题或状态说明。实际发送还受平台长度限制，预览不模拟各平台截断。"
+          hint="ntfy 和 Bark 把标题与正文分开显示，聊天渠道通常把标题放在第一行。没有内容的变量会留空；一整行只有空变量时会省略。预览使用示例内容，平台可能会缩短过长的消息。"
         />
       </Details>
     </>

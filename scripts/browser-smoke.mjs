@@ -167,13 +167,27 @@ async function checkBrowser(name) {
       "版本更新",
     ])
       await section(label);
+    await section("自动恢复");
+    const retries = page.getByLabel("最大重试次数", { exact: true });
+    await retries.fill("1.5");
+    await expect(
+      page.getByText("自动恢复 · 最大重试次数：请填写整数", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "保存设置", exact: true }),
+    ).toBeDisabled();
+    await retries.fill("21");
+    await expect(
+      page.getByText("自动恢复 · 最大重试次数：最多20", { exact: true }),
+    ).toBeVisible();
+    await retries.fill("5");
     await section("通知管理");
     const preview = page.getByLabel("预览正文内容", { exact: true });
     await expect(page.getByLabel("标题模板", { exact: true })).toBeVisible();
     await expect(preview).toBeVisible();
     await expect(page.getByLabel("示例回复", { exact: true })).toHaveCount(0);
     await expect(
-      page.getByLabel("Pattern 表达式", { exact: true }),
+      page.getByLabel("匹配规则（Pattern）", { exact: true }),
     ).toHaveCount(0);
     await expect(
       page.getByText("Pattern 如何填写", { exact: true }),
@@ -248,7 +262,7 @@ async function checkBrowser(name) {
       .click();
     const title = `CI ${name} · {{event}} · {{title}}`;
     await page.getByLabel("标题模板", { exact: true }).fill(title);
-    const pattern = page.getByLabel("Pattern 表达式", { exact: true });
+    const pattern = page.getByLabel("匹配规则（Pattern）", { exact: true });
     const validPattern = await pattern.inputValue();
     await pattern.fill("(");
     await expect(page.getByText("模板需要修改", { exact: true })).toBeVisible();

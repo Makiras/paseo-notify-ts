@@ -46,6 +46,7 @@ import { withoutChannel } from "../shared/routing";
 import { ScheduleSelection } from "./schedules";
 import { UpdatesPanel } from "./updates";
 import { MessageTemplates } from "./message-templates";
+import { settingsIssue } from "./validation";
 import {
   createSettingsNavigation,
   SectionNavigation,
@@ -227,7 +228,7 @@ function Editor({
   const recovery = (value: Partial<Config["recovery"]>) =>
     patch({ recovery: { ...draft.recovery, ...value } });
   const numeric = (value: string) =>
-    /^\d+$/.test(value.trim()) ? Number(value) : Number.NaN;
+    value.trim() ? Number(value) : Number.NaN;
   const valid = configSchema.safeParse(draft);
   function showValidationError() {
     if (valid.success) return;
@@ -325,7 +326,7 @@ function Editor({
           />
           <SettingsAction
             label={dirty || credentialsDirty ? "有未保存的修改" : "配置已同步"}
-            hint="保存所有栏目：先保存设置，再保存已填写的渠道凭据。切换栏目会保留草稿。"
+            hint="一次保存所有栏目的修改，包括渠道地址和密钥。切换栏目不会丢失已填写的内容。"
             actionLabel={busy ? "保存中…" : "保存设置"}
             disabled={
               (!dirty && !credentialsDirty) ||
@@ -355,15 +356,13 @@ function Editor({
           {dirty && revision !== settings.revision && (
             <SettingsRow
               label="其他客户端已修改配置"
-              hint="你的草稿已保留；请放弃修改读取新配置，再重新编辑"
+              hint="其他设备或页面已保存了新设置。请先记下这次的修改，再点击“放弃修改”载入新设置并重新填写。"
             />
           )}
           {!valid.success && (
             <SettingsAction
               label="请检查设置"
-              error={valid.error.issues
-                .map((i) => `${i.path.join(".")}：${i.message}`)
-                .join("；")}
+              error={valid.error.issues.map(settingsIssue).join("；")}
               actionLabel="前往修改"
               onPress={showValidationError}
             />
@@ -406,8 +405,8 @@ function Editor({
                 />
               ) : (
                 <SettingsRow
-                  label="尚未注册通知渠道"
-                  hint="选择平台并添加一个接收目标，再填写连接信息。"
+                  label="还没有通知渠道"
+                  hint="先选择平台，点击“添加渠道”，再填写接收消息的地址或机器人信息。"
                 />
               )}
               <SettingsSelect
@@ -424,10 +423,10 @@ function Editor({
                 }}
               />
               <SettingsAction
-                label="注册新的接收目标"
+                label="添加接收通知的群组或设备"
                 hint={
                   draft.channels.length >= 20
-                    ? "最多注册 20 个渠道"
+                    ? "最多添加 20 个渠道"
                     : "同一平台可以添加多个群组或设备"
                 }
                 actionLabel="添加渠道"
@@ -507,7 +506,7 @@ function Editor({
             <SettingsCard>
               <SettingsSwitch
                 label="自动继续"
-                hint="仅恢复网络、请求限流和服务繁忙；安全拦截、额度和上下文问题会通知你处理"
+                hint="遇到临时断网、请求过多或服务繁忙时，稍后继续原任务。安全拦截、额度用完或对话过长时，会通知你手动处理。"
                 value={draft.recovery.enabled}
                 onValueChange={(enabled) => recovery({ enabled })}
               />
@@ -544,13 +543,14 @@ function Editor({
                 onChangeText={(v) => recovery({ baseDelaySeconds: numeric(v) })}
               />
               <SettingsInput
-                label="最长退避等待（秒）"
-                hint="服务明确要求更久时，遵守其等待时间；超出恢复预算则停止"
+                label="两次重试最多间隔（秒）"
+                hint="连续失败时逐渐延长等待。如果服务要求等得更久，会按要求等待；超过上面的恢复时间上限后停止。"
                 initialValue={String(draft.recovery.maxDelaySeconds)}
                 onChangeText={(v) => recovery({ maxDelaySeconds: numeric(v) })}
               />
               <SettingsInput
                 label="继续指令"
+                hint="恢复任务时发给 AI 的消息。通常保留默认内容即可。"
                 initialValue={draft.recovery.prompt}
                 onChangeText={(prompt) => recovery({ prompt })}
               />
@@ -581,7 +581,7 @@ function Editor({
             <SettingsCard>
               <SettingsSwitch
                 label="包含子代理"
-                hint="关闭时只处理主会话，避免重复通知"
+                hint="开启后，AI 创建的子任务也使用这里的通知和恢复设置。关闭时只处理原任务。"
                 value={draft.includeSubagents}
                 onValueChange={(includeSubagents) =>
                   patch({ includeSubagents })
@@ -589,6 +589,7 @@ function Editor({
               />
               <SettingsInput
                 label="摘要字符数"
+                hint="最多附带多少个回复字符，可填写 80–2000。只截取已有回复，不会另外调用 AI 总结。"
                 initialValue={String(draft.notifications.previewCharacters)}
                 onChangeText={(v) =>
                   patch({
@@ -601,6 +602,7 @@ function Editor({
               />
               <SettingsInput
                 label="通知最多发送次数"
+                hint="包括第一次发送；发送失败后会再试，最多 12 次。不会重新运行 AI 任务。"
                 initialValue={String(draft.notifications.maxAttempts)}
                 onChangeText={(v) =>
                   patch({
@@ -613,6 +615,7 @@ function Editor({
               />
               <SettingsInput
                 label="运行记录保留天数"
+                hint="通知和恢复记录保留多久，可填写 1–30 天。"
                 initialValue={String(draft.notifications.retentionDays)}
                 onChangeText={(v) =>
                   patch({

@@ -24,8 +24,8 @@ export function ReviewSettings({
         }}
         hint={
           recoveryEnabled
-            ? "自动恢复的可选步骤。每次重试前将会话摘录交给独立 AI 判断，产生模型费用；复核不通过或超时则暂停。"
-            : "开启自动继续后可启用复核；已有复核设置会保留。"
+            ? "每次继续任务前，另开一个 AI 判断是否适合继续。会产生额外模型用量；复核不建议继续或判断超时，就暂停并通知你。"
+            : "先开启“自动继续”，再选择是否让 AI 复核。"
         }
       />
       {value.enabled && (
@@ -34,7 +34,7 @@ export function ReviewSettings({
             label="复核提供方 / 模型"
             initialValue={value.provider}
             onChangeText={(provider) => patch({ provider })}
-            hint="留空沿用原会话。支持 codex、claude、opencode，也可填写 提供方/模型。"
+            hint="留空使用原会话的 AI。也可填写 codex、claude、opencode，或使用“提供方/模型名”指定模型。"
           />
           <SettingsInput
             label="单次复核超时（秒）"

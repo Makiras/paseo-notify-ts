@@ -155,7 +155,7 @@ export const ChannelEditor = forwardRef<
       <SettingsCard key={settingsKey}>
         <SettingsRow
           label={names[channel.kind]}
-          hint={`渠道 ID：${channel.id}`}
+          hint="一个渠道对应一个接收群组、账号或设备。添加后，还需在默认通知去向或会话中选中它。"
         />
         <SettingsSwitch
           label="启用渠道"
@@ -165,6 +165,7 @@ export const ChannelEditor = forwardRef<
         />
         <SettingsInput
           label="名称"
+          hint="起一个容易辨认的名字，例如“开发群”或“我的手机”。"
           initialValue={channel.name}
           disabled={locked}
           onChangeText={(name) => patch({ name })}
@@ -194,7 +195,7 @@ export const ChannelEditor = forwardRef<
         ))}
         <SettingsInput
           label="限定提供方"
-          hint="逗号分隔；留空接收全部提供方"
+          hint="留空接收所有 AI 的通知。只接收特定 AI 时，填写 codex、claude 或 opencode，多个用逗号分隔。"
           initialValue={channel.providers.join(", ")}
           disabled={locked}
           onChangeText={(text) =>
@@ -208,7 +209,7 @@ export const ChannelEditor = forwardRef<
         />
         <SettingsInput
           label="限定工作区 ID"
-          hint="逗号分隔；留空接收全部工作区"
+          hint="通常留空。在工作区设置中选择通知渠道即可；这里填写 ID 会进一步限制此渠道接收哪些工作区的通知。"
           initialValue={channel.workspaceIds.join(", ")}
           disabled={locked}
           onChangeText={(text) =>
@@ -226,8 +227,8 @@ export const ChannelEditor = forwardRef<
           label="凭据"
           hint={
             configured
-              ? "已配置，保存后不会回传密钥。修改时需重新填写完整凭据。"
-              : "填写后点击页面上方的保存设置，会先保存渠道，再保存凭据。"
+              ? "连接信息已保存。为保护密钥，这里不会显示原值；需要更换时，请重新填写完整连接信息。"
+              : "填写平台提供的地址和密钥，然后点击顶部“保存设置”，即可保存这个渠道。"
           }
         />
         <SettingsSwitch
@@ -251,10 +252,10 @@ export const ChannelEditor = forwardRef<
                   channel.kind === "bark"
                     ? "例如 https://api.day.app/设备Key，支持自建服务"
                     : channel.kind === "ntfy"
-                      ? "支持自建服务；不要在此填写 topic 路径"
+                      ? "例如 https://ntfy.sh。订阅名称填在下方 Topic 中，不要拼在地址后面。"
                       : channel.kind === "telegram"
                         ? "可改为自建 Bot API 服务地址"
-                        : undefined
+                        : "粘贴接收消息的 Webhook 完整地址。群机器人地址可从机器人设置中复制。"
                 }
                 secureTextEntry={!["telegram", "ntfy"].includes(channel.kind)}
                 initialValue={url}
@@ -265,6 +266,11 @@ export const ChannelEditor = forwardRef<
               {["webhook", "feishu", "dingtalk"].includes(channel.kind) && (
                 <SettingsInput
                   label="签名密钥（可选）"
+                  hint={
+                    channel.kind === "webhook"
+                      ? "接收方要求签名校验时，填写双方约定的密钥；否则留空。"
+                      : "如果机器人开启了签名校验，请填写对应密钥；未开启则留空。"
+                  }
                   secureTextEntry
                   initialValue={secret}
                   disabled={locked}
@@ -302,7 +308,7 @@ export const ChannelEditor = forwardRef<
                   hint={
                     channel.kind === "telegram"
                       ? "数字 ID 或 @频道名；私聊需先向 Bot 发起会话"
-                      : "公共服务上的公开 topic 可被其他人订阅；私密通知请使用有访问控制的 topic"
+                      : "填写 ntfy 中订阅的名称。公开订阅名称可被其他人使用；私密消息请先在 ntfy 中设置访问权限。"
                   }
                   secureTextEntry
                   initialValue={target}
@@ -322,8 +328,8 @@ export const ChannelEditor = forwardRef<
                 label="保存凭据"
                 hint={
                   saved
-                    ? "凭据单独保存到宿主，普通设置中仅保留渠道 ID"
-                    : "点击页面上方的保存设置，将一并提交此凭据"
+                    ? "仅保存这里填写的连接信息。也可以用顶部“保存设置”一起保存所有修改。"
+                    : "新渠道请使用顶部“保存设置”，连接信息会一起保存。"
                 }
                 actionLabel={busy ? "处理中…" : "保存凭据"}
                 disabled={locked || !saved || !url.trim()}
@@ -342,7 +348,7 @@ export const ChannelEditor = forwardRef<
               ? "先点击页面上方的保存设置，保存此渠道和填写的凭据"
               : !configured
                 ? "请先填写并保存此渠道的连接信息"
-                : "立即使用已保存的凭据发送一条测试消息"
+                : "向此渠道发送一条测试消息。使用上次保存的设置；修改后请先保存。"
           }
           actionLabel={busy ? "处理中…" : "发送测试"}
           disabled={locked || !saved || !configured}

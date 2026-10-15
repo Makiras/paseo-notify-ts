@@ -194,7 +194,7 @@ describe("native settings drafts", () => {
     );
     await act(async () =>
       renderer.root
-        .findByProps({ accessibilityLabel: "Pattern 表达式" })
+        .findByProps({ accessibilityLabel: "匹配规则（Pattern）" })
         .props.onChangeText("("),
     );
     expect(
@@ -206,7 +206,9 @@ describe("native settings drafts", () => {
     await pressAction("添加结果链接示例");
     await pressAction("收起提取规则");
     expect(
-      renderer.root.findAllByProps({ accessibilityLabel: "Pattern 表达式" }),
+      renderer.root.findAllByProps({
+        accessibilityLabel: "匹配规则（Pattern）",
+      }),
     ).toHaveLength(0);
     await selectSection("channels");
     await act(async () =>
@@ -223,8 +225,8 @@ describe("native settings drafts", () => {
       renderer.root.findByProps({ label: "编辑提取规则" }).props.value,
     ).toBe("0");
     expect(
-      renderer.root.findByProps({ accessibilityLabel: "Pattern 表达式" }).props
-        .value,
+      renderer.root.findByProps({ accessibilityLabel: "匹配规则（Pattern）" })
+        .props.value,
     ).toBe("(");
   });
   it("keeps reply samples local and respects the preview privacy switch", async () => {
@@ -459,9 +461,26 @@ describe("native settings drafts", () => {
     expect(
       renderer.root.findByProps({ actionLabel: "保存设置" }).props.disabled,
     ).toBe(true);
-    expect(
-      renderer.root.findByProps({ label: "请检查设置" }).props.error,
-    ).toContain("maxAttempts");
+    expect(renderer.root.findByProps({ label: "请检查设置" }).props.error).toBe(
+      "自动恢复 · 最大重试次数：请填写有效数字",
+    );
+    for (const [input, message] of [
+      ["0", "至少1"],
+      ["21", "最多20"],
+      ["1.5", "请填写整数"],
+    ]) {
+      await act(async () =>
+        renderer.root
+          .findByProps({ label: "最大重试次数" })
+          .props.onChangeText(input),
+      );
+      expect(
+        renderer.root.findByProps({ label: "请检查设置" }).props.error,
+      ).toBe(`自动恢复 · 最大重试次数：${message}`);
+      expect(
+        renderer.root.findByProps({ actionLabel: "保存设置" }).props.disabled,
+      ).toBe(true);
+    }
     await selectSection("updates");
     await act(async () =>
       renderer.root.findByProps({ actionLabel: "前往修改" }).props.onPress(),

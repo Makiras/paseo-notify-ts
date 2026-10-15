@@ -2,21 +2,24 @@ import { z } from "zod";
 import { RE2JS } from "./vendor/re2js.js";
 
 export const templateFields = [
-  ["event", "事件名称，例如任务完成、需要处理"],
-  ["event_type", "事件标识，例如 completed、blocked"],
+  ["event", "通知类型，例如“任务完成”“需要处理”"],
+  ["event_type", "通知类型的英文代码，例如 completed、blocked"],
   ["title", "会话标题"],
-  ["summary", "插件生成的状态说明，不是 AI 回复"],
-  ["preview", "最终回复摘要；受摘要开关与字符数限制"],
-  ["session_id", "会话 ID"],
-  ["workspace_id", "工作区 ID；无工作区时为空"],
-  ["schedule_id", "来源定时任务 ID；普通会话为空"],
-  ["provider", "AI 提供方，例如 codex"],
-  ["failure", "异常中文名称；没有异常时为空"],
-  ["failure_type", "异常标识，例如 network；没有异常时为空"],
+  ["summary", "插件给出的任务状态说明，不是 AI 回复；AI 回复使用 {{preview}}"],
+  [
+    "preview",
+    "AI 最终回复的开头片段；需开启“附带最终回复摘要”，长度由“摘要字符数”决定",
+  ],
+  ["session_id", "会话的唯一编号，不是会话标题"],
+  ["workspace_id", "工作区的唯一编号；没有工作区时留空"],
+  ["schedule_id", "来源定时任务的编号；手动创建的普通会话留空"],
+  ["provider", "使用的 AI 工具，例如 codex"],
+  ["failure", "中断原因，例如“网络故障”；没有异常时留空"],
+  ["failure_type", "中断原因的英文代码，例如 network；没有异常时留空"],
   ["attempts", "自动恢复尝试次数，未恢复时为 0"],
   ["recovery", "有恢复时填入“自动恢复尝试：N 次”，否则为空"],
-  ["created_at", "事件时间，UTC ISO 8601 格式"],
-  ["notification_id", "通知事件 ID"],
+  ["created_at", "通知发生时间，使用 UTC 时区，例如 2026-01-01T08:00:00Z"],
+  ["notification_id", "这条通知的唯一编号，可用于核对运行记录"],
 ] as const;
 
 export const defaultTitleTemplate = "Paseo · {{event}}";

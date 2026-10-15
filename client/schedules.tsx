@@ -67,8 +67,8 @@ export function ScheduleSelection({
     <SettingsSection title="定时任务通知渠道">
       <SettingsCard>
         <SettingsRow
-          label="每次运行使用同一任务绑定"
-          hint="未单独选择时跟随 Host；工作区或会话的单独选择仍优先。修改后点击页面上方保存设置。"
+          label="为定时任务选择通知去向"
+          hint="每次运行都使用这里选定的渠道。没有单独选择时，使用 Host 默认渠道；工作区或会话中单独选定的渠道优先。修改后点击顶部“保存设置”。"
         />
         <SettingsAction
           label="读取 Paseo 定时任务"
