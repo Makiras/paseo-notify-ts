@@ -110,7 +110,7 @@ try {
     JSON.parse(
       await readFile(join(directory, "settings", "notifier.json"), "utf8"),
     ).version,
-    3,
+    4,
   );
   const values = {
     ...current.values,

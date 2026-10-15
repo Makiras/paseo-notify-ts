@@ -61,6 +61,32 @@ try {
       .update(await readFile(archive))
       .digest("hex");
     await writeFile(`${archive}.sha256`, `${hash}  ${metadata.filename}\n`);
+    const pkg = JSON.parse(await readFile("package.json", "utf8"));
+    const manifest = JSON.parse(await readFile("paseo-plugin.json", "utf8"));
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+    await writeFile(
+      join(output, "release.json"),
+      JSON.stringify(
+        {
+          schema: "paseo-notify-ts/release",
+          version: pkg.version,
+          tag: `v${pkg.version}`,
+          commit,
+          dirty: !!execFileSync(
+            "git",
+            ["status", "--porcelain", "--untracked-files=normal"],
+            { encoding: "utf8" },
+          ).trim(),
+          paseo: manifest.requirements.paseo,
+          archive: metadata.filename,
+          sha256: hash,
+        },
+        null,
+        2,
+      ) + "\n",
+    );
     console.log(`Install archive: ${archive}`);
   }
   console.log(

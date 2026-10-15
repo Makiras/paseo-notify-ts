@@ -142,6 +142,9 @@ export const configSchema = z
   .object({
     enabled: z.boolean().default(true),
     includeSubagents: z.boolean().default(false),
+    updates: z
+      .object({ checkAutomatically: z.boolean().default(true) })
+      .prefault({}),
     recovery: recoverySchema.prefault({}),
     notifications: z
       .object({
@@ -179,7 +182,7 @@ export const configSchema = z
 export type Config = z.infer<typeof configSchema>;
 export const defaultConfig = (): Config => configSchema.parse({});
 export function migrateSettings(values: unknown, fromVersion: number): Config {
-  if (fromVersion !== 1 && fromVersion !== 2)
+  if (fromVersion !== 1 && fromVersion !== 2 && fromVersion !== 3)
     throw new Error("不支持的设置格式");
   const config = configSchema.parse(values);
   // Preserve the previous fan-out for existing installations only.
@@ -189,7 +192,7 @@ export function migrateSettings(values: unknown, fromVersion: number): Config {
 export const preferences = defineSettings({
   id: "notifier",
   scope: "host",
-  version: 3,
+  version: 4,
   schema: configSchema,
   migrate: migrateSettings,
 });

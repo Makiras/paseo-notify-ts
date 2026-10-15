@@ -37,6 +37,7 @@ import { ChannelSelection } from "./channel-selection";
 import { ConfigTransfer } from "./transfer";
 import { withoutChannel } from "../shared/routing";
 import { ScheduleSelection } from "./schedules";
+import { UpdatesPanel } from "./updates";
 
 export function Settings(props: PluginSurfaceProps) {
   const settings = useSettings(preferences);
@@ -79,6 +80,8 @@ export function Settings(props: PluginSurfaceProps) {
 function Editor({
   settings,
   theme,
+  navigation,
+  host,
 }: PluginSurfaceProps & {
   settings: Extract<SettingsState<typeof configSchema>, { status: "ready" }>;
 }) {
@@ -111,7 +114,8 @@ function Editor({
   const credentialsBusy = draft.channels.some(
     (c) => credentialStates[c.id]?.busy,
   );
-  const busy = savingAll || settings.saving;
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const busy = savingAll || settings.saving || updateBusy;
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -160,7 +164,7 @@ function Editor({
     }
   }, [dirty, settings.revision, settings.values, revision]);
   const patch = (value: Partial<Config>) => {
-    if (saving.current || transferBusy) return;
+    if (saving.current || transferBusy || updateBusy) return;
     setDraft((d) => ({ ...d, ...value }));
     setDirty(true);
     setFeedback(null);
@@ -172,7 +176,13 @@ function Editor({
   const valid = configSchema.safeParse(draft);
   async function save() {
     const result = configSchema.safeParse(draft);
-    if (!result.success || saving.current || settings.saving || transferBusy)
+    if (
+      !result.success ||
+      saving.current ||
+      settings.saving ||
+      transferBusy ||
+      updateBusy
+    )
       return;
     const editors = draft.channels.map((channel) => ({
       channel,
@@ -484,6 +494,20 @@ function Editor({
         status={status}
         error={statusError}
         refresh={() => void refresh()}
+      />
+      <UpdatesPanel
+        automatic={draft.updates.checkAutomatically}
+        savedAutomatic={settings.values.updates.checkAutomatically}
+        onAutomaticChange={(checkAutomatically) =>
+          patch({ updates: { checkAutomatically } })
+        }
+        revision={revision}
+        disabled={
+          dirty || credentialsDirty || credentialsBusy || busy || transferBusy
+        }
+        onBusyChange={setUpdateBusy}
+        navigation={navigation}
+        host={host}
       />
     </View>
   );

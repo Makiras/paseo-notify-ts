@@ -23,10 +23,17 @@ import {
 import { exportConfiguration, planImport } from "./server/transfer";
 import { listSchedulesRpc } from "./shared/schedules";
 import { listSchedules, resolveAgentSchedule } from "./server/schedules";
+import { Updates } from "./server/updates";
+import {
+  checkUpdatesRpc,
+  installUpdateRpc,
+  updateWorkspacesRpc,
+} from "./shared/updates";
 
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(preferences);
   const paseoHome = process.env.PASEO_HOME ?? join(homedir(), ".paseo");
+  const updates = new Updates(paseoHome);
   const directory =
     process.env.PASEO_NOTIFIER_STATE_DIR ?? join(paseoHome, "notifier");
   let stopped = false;
@@ -93,6 +100,30 @@ export default function contribute(server: PluginServerContext) {
     return resolveAgentSchedule(paseo, agentId);
   }
   server.handle(listSchedulesRpc, () => listSchedules(paseoHome));
+  server.handle(checkUpdatesRpc, async (input) => {
+    const state = await settings.read();
+    return updates.check(
+      input.force,
+      state.status === "ready" && state.values.updates.checkAutomatically,
+    );
+  });
+  server.handle(updateWorkspacesRpc, async (_input, ctx) => {
+    const result = await ctx.paseo.workspaces.list({ page: { limit: 200 } });
+    return result.entries
+      .filter((w) => !w.archivingAt)
+      .map((w) => ({ id: w.id, name: w.name }));
+  });
+  server.handle(installUpdateRpc, async (input, ctx) => {
+    const state = await settings.read();
+    if (
+      stopped ||
+      state.status !== "ready" ||
+      state.revision !== input.revision
+    )
+      throw new Error("配置已变化，请保存设置后重新检查更新");
+    await configUpdates;
+    return updates.install(ctx.paseo, input);
+  });
   server.on("agent.turn_ended", (event, ctx) =>
     run(ctx.paseo, async (r) =>
       r.turnEnded(event, await scheduleFor(ctx.paseo, event.agent.id)),
@@ -191,6 +222,7 @@ export default function contribute(server: PluginServerContext) {
   });
   return async () => {
     stopped = true;
+    updates.close();
     await unsubscribe();
     await configUpdates.catch(() => undefined);
     const runtime = await ready.catch(() => undefined);
