@@ -1,5 +1,5 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { Settings } from "./client/settings";
+import { createSettingsScreen } from "./client/settings";
 import { RecoveryCard } from "./client/recovery-card";
 import { recoveryCardSchema } from "./shared/contracts";
 import { createRoutingPanel } from "./client/routing";
@@ -7,11 +7,12 @@ import { installRoutingButtons } from "./client/buttons";
 
 export default function contribute(client: PluginClientContext) {
   const RoutingPanel = createRoutingPanel(client);
+  const settings = createSettingsScreen();
   client.addSettingsScreen({
     id: "settings",
     title: "通知与自动恢复",
     icon: "BellRing",
-    Component: Settings,
+    Component: settings.Component,
   });
   client.addTimelineRenderer({
     kind: "notifier-recovery",
@@ -24,7 +25,10 @@ export default function contribute(client: PluginClientContext) {
     title: "Notifier：通知与自动恢复",
     icon: "BellRing",
     context: "global",
-    onSelect: ({ openSettings }) => openSettings("settings"),
+    onSelect: ({ openSettings }) => {
+      settings.select("channels");
+      openSettings("settings");
+    },
   });
   client.addWorkspacePanel({
     id: "workspace-routing",
@@ -45,7 +49,10 @@ export default function contribute(client: PluginClientContext) {
     title: "Notifier：定时任务通知渠道",
     icon: "BellRing",
     context: "global",
-    onSelect: ({ openSettings }) => openSettings("settings"),
+    onSelect: ({ openSettings }) => {
+      settings.select("schedules");
+      openSettings("settings");
+    },
   });
   client.addCommandCenterItem({
     id: "workspace-routing",

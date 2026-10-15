@@ -1,16 +1,16 @@
 import { createElement } from "react";
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import {
+  act,
+  create,
+  type ReactTestInstance,
+  type ReactTestRenderer,
+} from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PluginSurfaceProps,
   SettingsState,
 } from "@getpaseo/plugin/client";
-import {
-  channelNames,
-  channelSchema,
-  configSchema,
-  defaultConfig,
-} from "../shared/config";
+import { channelSchema, configSchema, defaultConfig } from "../shared/config";
 import type { RuntimeStatus } from "../shared/contracts";
 
 const host = vi.hoisted(() => ({
@@ -142,6 +142,27 @@ async function render() {
 function input(label: string) {
   return renderer.root.findByProps({ name: label });
 }
+function isVisible(node: ReactTestInstance): boolean {
+  for (
+    let current: ReactTestInstance | null = node;
+    current;
+    current = current.parent
+  )
+    if (current.props.style?.display === "none") return false;
+  return true;
+}
+function visibleInput(label: string) {
+  const inputs = renderer.root
+    .findAllByProps({ name: label })
+    .filter(isVisible);
+  expect(inputs).toHaveLength(1);
+  return inputs[0]!;
+}
+async function select(label: string, value: string) {
+  await act(async () =>
+    renderer.root.findByProps({ label }).props.onValueChange(value),
+  );
+}
 async function fill(values = fields) {
   for (const [label, value] of Object.entries(values)) {
     await act(async () => input(label).props.onChangeText(value));
@@ -171,6 +192,85 @@ function acceptSettings() {
 }
 
 describe("credential drafts across settings refreshes", () => {
+  it("preserves visible text across sections and channels, then saves all hidden drafts", async () => {
+    savedChannel();
+    state.values.channels.push(
+      channelSchema.parse({ id: "channel-b", name: "Phone", kind: "telegram" }),
+    );
+    acceptSettings();
+    await render();
+    await fill();
+    await act(async () =>
+      visibleInput("名称").props.onChangeText("Development"),
+    );
+    await select("编辑渠道", "channel-b");
+    expect(isVisible(input("Webhook 地址"))).toBe(false);
+    await act(async () =>
+      visibleInput("Bot Token").props.onChangeText("draft-telegram-token"),
+    );
+    await act(async () =>
+      visibleInput("Chat ID").props.onChangeText("-100123"),
+    );
+    await select("设置栏目", "recovery");
+    await act(async () =>
+      visibleInput("最大重试次数").props.onChangeText("007"),
+    );
+    await select("设置栏目", "channels");
+    expect(visibleInput("Bot Token").props.value).toBe("draft-telegram-token");
+    await select("编辑渠道", "channel-a");
+    expectDraft();
+    expect(visibleInput("名称").props.value).toBe("Development");
+    await select("设置栏目", "recovery");
+    // A remount would normalize this to "7" and lose the native input's draft.
+    expect(visibleInput("最大重试次数").props.value).toBe("007");
+    await click("保存设置");
+    expect(state.values.recovery.maxAttempts).toBe(7);
+    expect(state.values.channels[0]!.name).toBe("Development");
+    expect(host.write.mock.calls.map(([value]) => value.id)).toEqual([
+      "channel-a",
+      "channel-b",
+    ]);
+    expect(host.write.mock.calls[0]![0].credentials.url).toBe(
+      fields["Webhook 地址"],
+    );
+    expect(host.write.mock.calls[1]![0].credentials).toEqual(
+      expect.objectContaining({
+        bearerToken: "draft-telegram-token",
+        target: "-100123",
+      }),
+    );
+    expect(renderer.root.findByProps({ label: "保存结果" }).props.hint).toBe(
+      "设置和凭据已保存",
+    );
+  });
+
+  it("selects new channels and falls back after removal without losing another channel's credentials", async () => {
+    savedChannel();
+    await render();
+    await fill();
+    await select("新渠道平台", "telegram");
+    await click("添加渠道");
+    expect(visibleInput("Bot Token").props.value).toBe("");
+    await act(async () =>
+      visibleInput("Bot Token").props.onChangeText("unsaved-new-channel"),
+    );
+    const remove = renderer.root
+      .findAllByProps({ actionLabel: "移除" })
+      .filter(isVisible);
+    expect(remove).toHaveLength(1);
+    await act(async () => remove[0]!.props.onPress());
+    expect(renderer.root.findByProps({ label: "编辑渠道" }).props.value).toBe(
+      "channel-a",
+    );
+    expectDraft();
+    await select("设置栏目", "updates");
+    await click("放弃修改");
+    await select("设置栏目", "channels");
+    for (const label of Object.keys(fields))
+      expect(visibleInput(label).props.value).toBe("");
+    expect(host.write).not.toHaveBeenCalled();
+  });
+
   it("saves a new channel before its credentials in one action, with duplicate clicks blocked", async () => {
     let acknowledge!: () => void;
     const acknowledgment = new Promise<void>((resolve) => {
@@ -186,9 +286,7 @@ describe("credential drafts across settings refreshes", () => {
     });
     await render();
     await act(async () =>
-      renderer.root
-        .findByProps({ label: channelNames.webhook, actionLabel: "添加" })
-        .props.onPress(),
+      renderer.root.findByProps({ actionLabel: "添加渠道" }).props.onPress(),
     );
     await fill();
     expect(

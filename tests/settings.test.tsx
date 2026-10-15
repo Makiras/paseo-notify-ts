@@ -1,5 +1,10 @@
 import { createElement } from "react";
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import {
+  act,
+  create,
+  type ReactTestInstance,
+  type ReactTestRenderer,
+} from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PluginSurfaceProps,
@@ -46,7 +51,7 @@ vi.mock("@getpaseo/plugin/client/react-native", () => ({
   TextInput: "TextInput",
   copyText: vi.fn(async () => {}),
 }));
-import { Settings } from "../client/settings";
+import { Settings, createSettingsScreen } from "../client/settings";
 
 let renderer: ReactTestRenderer;
 let state: SettingsState<typeof configSchema>;
@@ -74,12 +79,106 @@ beforeEach(() => {
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
 });
-async function render() {
+async function render(surface = props) {
   await act(async () => {
-    renderer = create(createElement(Settings, props));
+    renderer = create(createElement(Settings, surface));
   });
 }
+function isVisible(node: ReactTestInstance): boolean {
+  for (
+    let current: ReactTestInstance | null = node;
+    current;
+    current = current.parent
+  )
+    if (current.props.style?.display === "none") return false;
+  return true;
+}
+async function selectSection(section: string) {
+  await act(async () =>
+    renderer.root
+      .findByProps({ label: "设置栏目" })
+      .props.onValueChange(section),
+  );
+}
 describe("native settings drafts", () => {
+  it("shows one section at a time on compact layouts and keeps save available", async () => {
+    await render();
+    expect(isVisible(renderer.root.findByProps({ title: "渠道管理" }))).toBe(
+      true,
+    );
+    expect(isVisible(renderer.root.findByProps({ label: "自动继续" }))).toBe(
+      false,
+    );
+    await selectSection("recovery");
+    expect(isVisible(renderer.root.findByProps({ title: "渠道管理" }))).toBe(
+      false,
+    );
+    expect(isVisible(renderer.root.findByProps({ label: "自动继续" }))).toBe(
+      true,
+    );
+    expect(
+      isVisible(renderer.root.findByProps({ label: "重试前由 AI 复核" })),
+    ).toBe(true);
+    expect(
+      isVisible(renderer.root.findByProps({ actionLabel: "保存设置" })),
+    ).toBe(true);
+    await selectSection("transfer");
+    expect(
+      isVisible(renderer.root.findByProps({ actionLabel: "复制配置" })),
+    ).toBe(true);
+    expect(isVisible(renderer.root.findByProps({ label: "自动继续" }))).toBe(
+      false,
+    );
+  });
+  it("uses tabs on wide layouts and preserves the selected section when narrowing", async () => {
+    await render({ ...props, layout: { compact: false, platform: "web" } });
+    expect(
+      renderer.root.findAllByProps({ accessibilityRole: "tab" }),
+    ).toHaveLength(7);
+    const tab = renderer.root.findByProps({
+      accessibilityRole: "tab",
+      accessibilityLabel: "自动恢复",
+    });
+    await act(async () => tab.props.onPress());
+    expect(tab.props.accessibilityState.selected).toBe(true);
+    await act(async () => renderer.update(createElement(Settings, props)));
+    expect(renderer.root.findByProps({ label: "设置栏目" }).props.value).toBe(
+      "recovery",
+    );
+    expect(isVisible(renderer.root.findByProps({ label: "自动继续" }))).toBe(
+      true,
+    );
+  });
+  it("opens command-selected sections before and after mount without discarding edits", async () => {
+    const screen = createSettingsScreen();
+    const anotherHost = createSettingsScreen();
+    screen.select("schedules");
+    await act(async () => {
+      renderer = create(createElement(screen.Component, props));
+    });
+    expect(renderer.root.findByProps({ label: "设置栏目" }).props.value).toBe(
+      "schedules",
+    );
+    await act(async () => screen.select("recovery"));
+    await act(async () =>
+      renderer.root
+        .findByProps({ label: "自动继续" })
+        .props.onValueChange(true),
+    );
+    await act(async () => screen.select("schedules"));
+    expect(renderer.root.findByProps({ label: "自动继续" }).props.value).toBe(
+      true,
+    );
+    await act(async () =>
+      renderer.update(createElement(anotherHost.Component, props)),
+    );
+    expect(renderer.root.findByProps({ label: "设置栏目" }).props.value).toBe(
+      "channels",
+    );
+    expect(renderer.root.findByProps({ label: "自动继续" }).props.value).toBe(
+      false,
+    );
+  });
   it("saves review controls with the existing recovery settings", async () => {
     await render();
     await act(async () =>
@@ -114,6 +213,9 @@ describe("native settings drafts", () => {
   });
   it("offers all sending channels in the native configuration page", async () => {
     await render();
+    const options = renderer.root.findByProps({ label: "新渠道平台" }).props
+      .options;
+    expect(options).toHaveLength(9);
     for (const label of [
       "Telegram Bot",
       "钉钉群机器人",
@@ -122,9 +224,7 @@ describe("native settings drafts", () => {
       "Slack",
       "Discord",
     ])
-      expect(
-        renderer.root.findByProps({ label, actionLabel: "添加" }),
-      ).toBeTruthy();
+      expect(options).toContainEqual(expect.objectContaining({ label }));
   });
   it("saves a complete validated document against its captured revision", async () => {
     await render();
@@ -169,6 +269,7 @@ describe("native settings drafts", () => {
   });
   it("blocks invalid numeric values before saving", async () => {
     await render();
+    await selectSection("recovery");
     await act(async () =>
       renderer.root
         .findByProps({ label: "最大重试次数" })
@@ -180,6 +281,13 @@ describe("native settings drafts", () => {
     expect(
       renderer.root.findByProps({ label: "请检查设置" }).props.error,
     ).toContain("maxAttempts");
+    await selectSection("updates");
+    await act(async () =>
+      renderer.root.findByProps({ actionLabel: "前往修改" }).props.onPress(),
+    );
+    expect(renderer.root.findByProps({ label: "设置栏目" }).props.value).toBe(
+      "recovery",
+    );
   });
   it("renders loading state without editable defaults", async () => {
     host.settings = { ...state, status: "loading" };
