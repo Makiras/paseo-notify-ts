@@ -306,7 +306,7 @@ try {
       agent: {
         ...origin,
         labels: { "paseo.schedule-id": schedule.id },
-        status: submitted ? "running" : "idle",
+        status: submitted ? "running" : "error",
         persistence: { sessionId: "session" },
         lastUserMessageAt: "2026-01-01",
         pendingPermissions: [],
@@ -391,8 +391,85 @@ try {
     await readFile(join(directory, "operations", "operations.json"), "utf8"),
   );
   assert.equal(operations.recoveries[0].scheduleId, schedule.id);
+  // Reproduce the long-session capacity failure through the installed server
+  // bundle. A successful ordinary recovery must never read timeline history.
+  const ordinarySettings = await registered.read.handle();
+  await registered.write.handle({
+    revision: ordinarySettings.revision,
+    values: {
+      ...ordinarySettings.values,
+      recovery: {
+        ...ordinarySettings.values.recovery,
+        review: { ...ordinarySettings.values.recovery.review, enabled: false },
+      },
+    },
+  });
+  let longSubmitted = false;
+  let historyReads = 0;
+  const longOrigin = { ...origin, id: "long-session", title: "Long task" };
+  const longPaseo = {
+    agents: {
+      ref: () => ({
+        refresh: async () => ({
+          agent: {
+            ...longOrigin,
+            labels: {},
+            status: longSubmitted ? "running" : "error",
+            activeTurn: null,
+            pendingPermissions: [],
+          },
+        }),
+        timeline: {
+          refetch: async () => {
+            historyReads++;
+            throw new Error("History unavailable");
+          },
+          append: async () => {},
+        },
+        send: async (_text, options) => {
+          assert.equal(options.activeTurnBehavior, "steer");
+          assert.ok(options.messageId);
+          longSubmitted = true;
+        },
+      }),
+    },
+  };
+  await hooks.get("agent.turn_ended")(
+    {
+      agent: longOrigin,
+      turnId: "long-failed",
+      outcome: {
+        kind: "failed",
+        error: {
+          message:
+            "Selected model is at capacity. Please try a different model.",
+        },
+      },
+      timeline: Array.from({ length: 1200 }, () => ({
+        type: "assistant_message",
+        text: "progress",
+      })),
+    },
+    { paseo: longPaseo },
+  );
+  const longDeadline = Date.now() + 5000;
+  while (!longSubmitted && Date.now() < longDeadline)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(
+    longSubmitted,
+    "long sessions recover without a user-message boundary",
+  );
+  assert.equal(historyReads, 0, "ordinary recovery must not read history");
+  const latestOperations = JSON.parse(
+    await readFile(join(directory, "operations", "operations.json"), "utf8"),
+  );
+  assert.equal(
+    latestOperations.recoveries.find((r) => r.agentId === "long-session")
+      .attempts,
+    1,
+  );
   console.log(
-    "Host smoke: settings migrated and applied before credential writes; schedule metadata and repeated-run routing validated; portable transfer preserved local bindings; credentials masked; isolated AI review archived before continuation, with reviewer callbacks excluded.",
+    "Host smoke: settings migrated and applied before credential writes; schedule metadata and repeated-run routing validated; portable transfer preserved local bindings; credentials masked; isolated AI review archived before continuation, with reviewer callbacks excluded; long-session capacity failure recovered without any history reads.",
   );
 } finally {
   await cleanup?.();

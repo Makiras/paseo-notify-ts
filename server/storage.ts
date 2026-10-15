@@ -23,11 +23,12 @@ export const recoverySchema = recoveryCardSchema.extend({
   scheduleId: z.string().nullable().optional(),
   failure: failureKindSchema,
   startedAt: z.number(),
-  fingerprint: z.string(),
   userKey: z.string().nullable(),
+  turnId: z.string().nullable().default(null),
   messageId: z.string().nullable(),
-  sessionId: z.string().nullable(),
-  lastUserMessageAt: z.string().nullable(),
+  // Legacy journals omit these execution flags; old content fingerprints are discarded.
+  superseded: z.boolean().default(false),
+  awaitingStart: z.boolean().default(false),
 });
 export type Recovery = z.infer<typeof recoverySchema>;
 export const deliverySchema = z.object({

@@ -27,11 +27,11 @@ async function setup(reviewEnabled = false) {
     () => 0,
   );
   runtimes.push(r);
-  let view: AgentView = {
+  let view: AgentView & { items: ReturnType<typeof event>["timeline"] } = {
     available: true,
     idle: true,
-    sessionId: "session-a",
-    lastUserMessageAt: "2023-01-01T00:00:00Z",
+    status: "error",
+    pendingPermissions: 0,
     items: event().timeline,
   };
   const send = vi.fn(
@@ -50,7 +50,11 @@ async function setup(reviewEnabled = false) {
       };
     },
   );
-  const inspect = vi.fn(async () => structuredClone(view));
+  const inspect = vi.fn(async (): Promise<AgentView> => {
+    const { items: _, ...snapshot } = view;
+    return structuredClone(snapshot);
+  });
+  const history = vi.fn(async () => structuredClone(view.items));
   const review = vi.fn(
     async (
       _request: ReviewRequest,
@@ -63,6 +67,7 @@ async function setup(reviewEnabled = false) {
   const archiveReviewer = vi.fn(async (_id: string) => {});
   const port: PaseoPort = {
     inspect,
+    history,
     send,
     publish: vi.fn(async () => {}),
     review,
@@ -77,15 +82,207 @@ async function setup(reviewEnabled = false) {
     sent,
     send,
     inspect,
+    history,
     port,
     review,
     archiveReviewer,
-    setView: (next: Partial<AgentView>) => {
+    setView: (next: Partial<typeof view>) => {
       view = { ...view, ...next };
     },
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it("honors manual cancellation after a continuation starts with its own turn ID", async () => {
+    const s = await setup();
+    await s.r.turnEnded({ ...event(), turnId: "initial" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await s.r.turnStarted(agent.id, "automatic");
+    await s.r.turnStarted(agent.id, "automatic");
+    await s.r.cancelRecovery(s.store.state.read().recoveries[0]!.id);
+    s.setView({ idle: true, status: "error" });
+    await s.r.turnEnded({
+      ...event(undefined, s.send.mock.calls[0]![2]),
+      turnId: "automatic",
+    });
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(s.send).toHaveBeenCalledTimes(1);
+    expect(s.store.state.read().recoveries).toHaveLength(1);
+    await s.r.turnStarted(agent.id, "manual-new");
+    await s.r.turnEnded({ ...event(), turnId: "manual-new" });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledTimes(2);
+  });
+  it("classifies the current failure instead of an unrelated older timeline error", async () => {
+    const s = await setup();
+    await s.r.turnEnded({
+      ...event({
+        kind: "failed",
+        error: { message: "Selected model is at capacity" },
+      }),
+      timeline: [{ type: "error", message: "insufficient_quota" }],
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledTimes(1);
+    expect(s.store.state.read().recoveries[0]!.failure).toBe("overloaded");
+  });
+
+  it("recovers capacity failure with no user boundary and unavailable history", async () => {
+    const s = await setup();
+    s.history.mockRejectedValue(new Error("history is too long"));
+    await s.r.turnEnded({
+      ...event({
+        kind: "failed",
+        error: {
+          message:
+            "Selected model is at capacity. Please try a different model.",
+        },
+      }),
+      timeline: [{ type: "assistant_message", text: "late tool output" }],
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledTimes(1);
+    expect(s.history).not.toHaveBeenCalled();
+    expect(s.store.state.read().recoveries[0]).toMatchObject({
+      phase: "running",
+      attempts: 1,
+    });
+    expect(s.store.state.read().recoveries[0]).not.toHaveProperty(
+      "fingerprint",
+    );
+  });
+  it("ignores missing or changed history while the latest execution is still failed", async () => {
+    const s = await setup();
+    await s.r.turnEnded(event());
+    s.setView({ items: [] });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledTimes(1);
+    expect(s.history).not.toHaveBeenCalled();
+  });
+  it("allows a new failure after manual execution replaces a waiting plan", async () => {
+    const s = await setup();
+    await s.r.turnEnded(event());
+    await s.r.turnStarted(agent.id);
+    // Even identical contents and null turn IDs belong to a new execution.
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledTimes(1);
+    expect(s.store.state.read().recoveries.map((r) => r.phase)).toEqual([
+      "canceled",
+      "running",
+    ]);
+  });
+  it("keeps retry budgets for long automatic executions with null turn IDs and no user messages", async () => {
+    const s = await setup();
+    const failure = { ...event(), timeline: [] };
+    await s.r.turnEnded(failure);
+    await vi.advanceTimersByTimeAsync(1000);
+    await s.r.turnStarted(agent.id);
+    s.setView({ idle: true, status: "error" });
+    await s.r.turnEnded(failure);
+    await s.r.turnEnded(failure);
+    await vi.advanceTimersByTimeAsync(2000);
+    await s.r.turnStarted(agent.id);
+    s.setView({ idle: true, status: "error" });
+    await s.r.turnEnded(failure);
+    expect(s.send).toHaveBeenCalledTimes(2);
+    expect(s.store.state.read().recoveries).toHaveLength(1);
+    expect(s.store.state.read().recoveries[0]).toMatchObject({
+      phase: "exhausted",
+      attempts: 2,
+    });
+  });
+  it("allows a later failure with a different turn ID when the start callback was missed", async () => {
+    const s = await setup();
+    await s.r.turnEnded({ ...event(), turnId: "old" });
+    s.setView({ idle: false, status: "running" });
+    await vi.advanceTimersByTimeAsync(1000);
+    s.setView({ idle: true, status: "error" });
+    await s.r.turnEnded({ ...event(), turnId: "new" });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledTimes(1);
+  });
+  it("invalidates an in-flight check when a newer successful end callback arrives", async () => {
+    const s = await setup();
+    let resolve!: (view: AgentView) => void;
+    s.inspect.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(1000);
+    const completed = s.r.turnEnded(event({ kind: "completed" }));
+    resolve({
+      available: true,
+      idle: true,
+      status: "error",
+      pendingPermissions: 0,
+    });
+    await completed;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).not.toHaveBeenCalled();
+  });
+  it.each([
+    [{ idle: false, status: "running" }, "canceled", "正在执行"],
+    [{ idle: false, pendingPermissions: 1 }, "paused", "等待权限"],
+    [{ available: false }, "paused", "不可用"],
+  ] as const)(
+    "blocks explicit incompatible runtime state %j with a concrete reason",
+    async (view, phase, reason) => {
+      const s = await setup();
+      await s.r.turnEnded(event());
+      s.setView(view);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(s.send).not.toHaveBeenCalled();
+      expect(s.store.state.read().recoveries[0]).toMatchObject({
+        phase,
+        attempts: 0,
+      });
+      expect(s.store.state.read().recoveries[0]!.reason).toContain(reason);
+    },
+  );
+  it("pauses on a failed status request without claiming content changed", async () => {
+    const s = await setup();
+    s.inspect.mockRejectedValue(new Error("offline"));
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).not.toHaveBeenCalled();
+    expect(s.store.state.read().recoveries[0]).toMatchObject({
+      phase: "paused",
+      attempts: 0,
+    });
+    expect(s.store.state.read().recoveries[0]!.reason).toContain(
+      "无法核对会话状态",
+    );
+  });
+  it("pauses only enabled review when its bounded excerpt cannot be read", async () => {
+    const s = await setup(true);
+    s.history.mockRejectedValue(new Error("offline"));
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.review).not.toHaveBeenCalled();
+    expect(s.send).not.toHaveBeenCalled();
+    expect(s.store.state.read().recoveries[0]!.reason).toContain(
+      "复核所需的会话摘录",
+    );
+  });
+  it("reviews a partial tail without a user boundary or comparison against an older excerpt", async () => {
+    const s = await setup(true);
+    s.setView({
+      items: [{ type: "assistant_message", text: "partial latest progress" }],
+    });
+    s.review.mockImplementation(async () => {
+      s.setView({ items: [] });
+      return { decision: "continue", reason: "temporary failure" };
+    });
+    await s.r.turnEnded({ ...event(), timeline: [] });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.history).toHaveBeenCalledTimes(1);
+    expect(s.review).toHaveBeenCalledTimes(1);
+    expect(s.send).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the saved Feishu type for queued notices and immediate tests without replacing credentials", async () => {
     const s = await setup();
     s.c.channels[0] = channelSchema.parse({
@@ -248,22 +445,10 @@ describe("callback recovery and durable notification flow", () => {
     expect(s.archiveReviewer).toHaveBeenCalledTimes(2);
     expect(s.archiveReviewer).toHaveBeenLastCalledWith(id);
   });
-  it("does not use a review decision for changed tool results", async () => {
+  it("does not use a review decision when execution resumes", async () => {
     const s = await setup(true);
     s.review.mockImplementation(async () => {
-      s.setView({
-        items: [
-          ...event().timeline,
-          {
-            type: "tool_call",
-            callId: "tool-1",
-            name: "send",
-            status: "completed",
-            error: null,
-            detail: { type: "unknown", input: null, output: "sent" },
-          },
-        ],
-      });
+      s.setView({ idle: false, status: "running" });
       return { decision: "continue", reason: "old snapshot" };
     });
     await s.r.turnEnded(event());
@@ -338,10 +523,10 @@ describe("callback recovery and durable notification flow", () => {
     expect(s.store.state.read().recoveries[0]!.phase).toBe("canceled");
     expect(s.send).not.toHaveBeenCalled();
   });
-  it("invalidates an approval when the source snapshot changes without a callback", async () => {
+  it("invalidates an approval when the source completed without a callback", async () => {
     const s = await setup(true);
     s.review.mockImplementation(async () => {
-      s.setView({ items: event(undefined, "new-user").timeline });
+      s.setView({ status: "idle", idle: true });
       return { decision: "continue", reason: "old snapshot" };
     });
     await s.r.turnEnded(event());
@@ -477,9 +662,8 @@ describe("callback recovery and durable notification flow", () => {
     s.inspect.mockImplementationOnce(async () => ({
       available: true,
       idle: true,
-      sessionId: "session-a",
-      lastUserMessageAt: null,
-      items: event().timeline,
+      status: "error",
+      pendingPermissions: 0,
     }));
     s.inspect.mockImplementationOnce(() => pending);
     await s.r.turnEnded(event());
@@ -489,18 +673,17 @@ describe("callback recovery and durable notification flow", () => {
     resolve({
       available: true,
       idle: true,
-      sessionId: "session-a",
-      lastUserMessageAt: null,
-      items: event().timeline,
+      status: "error",
+      pendingPermissions: 0,
     });
     await cancel;
     await vi.advanceTimersByTimeAsync(1);
     expect(s.send).not.toHaveBeenCalled();
   });
-  it("does not send if history changes without a turn-start callback", async () => {
+  it("does not send after normal completion even without a turn-start callback", async () => {
     const s = await setup();
     await s.r.turnEnded(event());
-    s.setView({ items: event(undefined, "new-user").timeline });
+    s.setView({ status: "idle", idle: true });
     await vi.advanceTimersByTimeAsync(1000);
     expect(s.send).not.toHaveBeenCalled();
   });

@@ -1,78 +1,78 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PaseoApi } from "@getpaseo/client";
 import { paseoPort } from "../server/paseo";
-import { event } from "./fixtures";
+
+function adapter(
+  snapshot: Record<string, unknown> | null = {
+    status: "error",
+    pendingPermissions: [],
+    activeTurn: null,
+  },
+) {
+  const refetch = vi.fn(async () => ({
+    entries: [{ item: { type: "assistant_message", text: "Interrupted" } }],
+    epoch: "e1",
+    hasOlder: true,
+  }));
+  const refresh = vi.fn(async () => (snapshot ? { agent: snapshot } : null));
+  const send = vi.fn(async () => {});
+  const paseo = {
+    agents: { ref: () => ({ timeline: { refetch }, refresh, send }) },
+  } as unknown as PaseoApi;
+  return { port: paseoPort(paseo), refetch, refresh, send };
+}
 
 describe("Paseo adapter", () => {
-  it("uses projected history and waits for the current user boundary", async () => {
-    const refetch = vi
-      .fn()
-      .mockResolvedValueOnce({
-        entries: [{ item: event().timeline[1] }],
-        epoch: "e1",
-        hasOlder: true,
-        startCursor: { epoch: "e1", seq: 10 },
-      })
-      .mockResolvedValueOnce({
-        entries: [{ item: event().timeline[0] }],
-        epoch: "e1",
-        hasOlder: false,
-      });
-    const agent = {
-      timeline: { refetch },
-      refresh: vi.fn(async () => ({
-        agent: {
-          status: "error",
-          pendingPermissions: [],
-          persistence: { sessionId: "s1" },
-          lastUserMessageAt: "now",
-        },
-      })),
-    };
-    const paseo = { agents: { ref: () => agent } } as unknown as PaseoApi;
-    const view = await paseoPort(paseo).inspect("a");
-    expect(view).toMatchObject({
+  it("checks a failed long session without fetching any history or user boundary", async () => {
+    const s = adapter();
+    s.refetch.mockRejectedValue(new Error("history unavailable"));
+    expect(await s.port.inspect("a")).toEqual({
       available: true,
       idle: true,
-      sessionId: "s1",
+      status: "error",
+      pendingPermissions: 0,
     });
-    expect(view.items).toHaveLength(2);
-    expect(refetch.mock.calls[0]![0]).toMatchObject({
-      projection: "projected",
-      direction: "tail",
-    });
-    expect(refetch.mock.calls[1]![0]).toMatchObject({
-      cursor: { epoch: "e1", seq: 10 },
-      direction: "before",
-    });
+    expect(s.refetch).not.toHaveBeenCalled();
   });
-  it("refuses a timeline replacement during pagination", async () => {
-    const refetch = vi
-      .fn()
-      .mockResolvedValueOnce({
-        entries: [],
-        epoch: "old",
-        hasOlder: true,
-        startCursor: { epoch: "old", seq: 9 },
-      })
-      .mockResolvedValueOnce({
-        entries: [],
-        epoch: "new",
-        hasOlder: false,
-        reset: true,
-      });
-    const paseo = {
-      agents: { ref: () => ({ timeline: { refetch } }) },
-    } as unknown as PaseoApi;
-    await expect(paseoPort(paseo).inspect("a")).rejects.toThrow(
-      "历史已发生变化",
+  it("reads only one bounded tail page for review, even without a user message", async () => {
+    const s = adapter();
+    expect(await s.port.history!("a")).toHaveLength(1);
+    expect(s.refetch).toHaveBeenCalledExactlyOnceWith({
+      direction: "tail",
+      limit: 100,
+      projection: "projected",
+    });
+    expect(s.refresh).not.toHaveBeenCalled();
+  });
+  it.each([
+    { status: "running", activeTurn: null, pendingPermissions: [] },
+    { status: "error", activeTurn: { turnId: "live" }, pendingPermissions: [] },
+    { status: "error", pendingPermissions: [{ id: "permission" }] },
+  ])("does not treat an occupied session as idle: %j", async (snapshot) => {
+    expect((await adapter(snapshot).port.inspect("a")).idle).toBe(false);
+  });
+  it.each([
+    { status: "closed", pendingPermissions: [] },
+    { status: "error", archivedAt: "now", pendingPermissions: [] },
+    { status: "error", providerUnavailable: true, pendingPermissions: [] },
+  ])(
+    "reports unavailable sessions without consulting history: %j",
+    async (snapshot) => {
+      expect((await adapter(snapshot).port.inspect("a")).available).toBe(false);
+    },
+  );
+  it("keeps a failed snapshot request unknown rather than inventing an idle state", async () => {
+    await expect(adapter(null).port.inspect("a")).rejects.toThrow(
+      "暂时无法读取会话状态",
     );
+    const s = adapter();
+    s.refresh.mockRejectedValue(new Error("offline"));
+    await expect(s.port.inspect("a")).rejects.toThrow("offline");
   });
   it("passes message identity and explicitly avoids the SDK's interrupt default", async () => {
-    const send = vi.fn(async () => {});
-    const paseo = { agents: { ref: () => ({ send }) } } as unknown as PaseoApi;
-    await paseoPort(paseo).send("a", "continue", "stable-id");
-    expect(send).toHaveBeenCalledWith("continue", {
+    const s = adapter();
+    await s.port.send("a", "continue", "stable-id");
+    expect(s.send).toHaveBeenCalledWith("continue", {
       messageId: "stable-id",
       activeTurnBehavior: "steer",
     });

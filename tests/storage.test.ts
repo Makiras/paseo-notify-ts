@@ -51,7 +51,11 @@ describe("private operation storage", () => {
       attempts: 2,
       phase: "waiting",
       reviews: [],
+      superseded: false,
+      awaitingStart: false,
+      turnId: null,
     });
+    expect(store.state.read().recoveries[0]).not.toHaveProperty("fingerprint");
     await store.close();
   });
   it("serializes concurrent writes and survives a reopen", async () => {

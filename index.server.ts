@@ -130,7 +130,7 @@ export default function contribute(server: PluginServerContext) {
     ),
   );
   server.on("agent.turn_started", (event, ctx) =>
-    run(ctx.paseo, (r) => r.turnStarted(event.agent.id)),
+    run(ctx.paseo, (r) => r.turnStarted(event.agent.id, event.turnId)),
   );
   server.on("agent.permission_requested", (event, ctx) =>
     run(ctx.paseo, async (r) =>

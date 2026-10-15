@@ -32,13 +32,7 @@ import type { TransferSecrets } from "../shared/transfer";
 import type { PaseoPort } from "./paseo";
 import type { AgentTimelineItem } from "./types";
 import { prune, type Recovery, type State, type Storage } from "./storage";
-import {
-  currentError,
-  digest,
-  finalText,
-  fingerprint,
-  userIdentity,
-} from "./timeline";
+import { digest, finalText, userIdentity } from "./timeline";
 
 type EndEvent = PluginLifecycleEvents["agent.turn_ended"];
 type Sender = typeof deliver;
@@ -68,6 +62,11 @@ export class Runtime {
   private timer?: ReturnType<typeof setTimeout>;
   private readonly controller = new AbortController();
   private readonly lanes = new Map<string, Promise<unknown>>();
+  private readonly executionStarts = new Map<
+    string,
+    { key: string; turnId: string | null }
+  >();
+  private readonly pendingEnds = new Set<string>();
   private readonly generations = new Map<string, number>();
   private readonly recoveryBusy = new Set<string>();
   private readonly deliveryBusy = new Map<string, AbortController>();
@@ -153,12 +152,12 @@ export class Runtime {
             if (current?.phase !== "running") return;
             try {
               const view = await port.inspect(current.agentId);
-              const user = userIdentity(view.items);
-              if (
-                !view.available ||
-                (user !== current.messageId && user !== current.userKey)
-              )
-                await this.stopRecovery(id, "重启后会话已发生变化");
+              if (!view.available)
+                await this.stopRecovery(
+                  id,
+                  "重启后会话不可用，已暂停自动恢复",
+                  "paused",
+                );
               else if (view.idle)
                 await this.stopRecovery(
                   id,
@@ -430,12 +429,21 @@ export class Runtime {
       return;
     const key = digest([
       event.agent.id,
-      event.turnId,
+      event.turnId ?? [
+        this.executionStarts.get(event.agent.id)?.key ?? "unobserved",
+        userIdentity(event.timeline),
+      ],
       event.outcome,
-      fingerprint(event.timeline),
     ]);
-    if (this.storage.state.read().seen.some((e) => e.key === key)) return;
-    if (this.reviewControllers.has(event.agent.id)) this.bump(event.agent.id);
+    if (
+      this.pendingEnds.has(key) ||
+      this.storage.state.read().seen.some((e) => e.key === key)
+    )
+      return;
+    this.pendingEnds.add(key);
+    // Invalidate an in-flight preflight/review immediately, before this callback
+    // waits for the agent lane. A newer success must defeat the older retry.
+    this.bump(event.agent.id);
     return this.lane(event.agent.id, async () => {
       if (
         this.closed ||
@@ -445,11 +453,7 @@ export class Runtime {
         return;
       const now = this.now();
       if (this.storage.state.read().seen.some((e) => e.key === key)) return;
-      const failure = classify(
-        event.outcome,
-        finalText(event.timeline),
-        currentError(event.timeline),
-      );
+      const failure = classify(event.outcome, finalText(event.timeline));
       let changed: Recovery | undefined;
       await this.storage.state.update((state) => {
         try {
@@ -465,19 +469,25 @@ export class Runtime {
             (userKey === previous.messageId || userKey === previous.userKey);
           const continuation =
             previous &&
-            sameUser &&
+            !previous.superseded &&
+            (sameUser || userKey === null || previous.userKey === null) &&
             (["running", "dispatching"].includes(previous.phase) ||
               (previous.phase === "paused" && userKey === previous.messageId));
           const suppressed =
             previous &&
-            sameUser &&
+            !previous.superseded &&
+            (sameUser || userKey === null) &&
+            (event.turnId === null ||
+              event.turnId === previous.turnId ||
+              userKey === previous.messageId ||
+              (previous.awaitingStart && userKey === null)) &&
             !active(previous) &&
             !continuation &&
             previous.phase !== "done";
           if (previous && active(previous) && !continuation) {
             previous.phase = "canceled";
             previous.dueAt = null;
-            previous.reason = "会话已发生变化";
+            previous.reason = "收到新的执行结果，旧恢复计划已结束";
             previous.updatedAt = now;
           }
           if (event.outcome.kind === "canceled") {
@@ -544,16 +554,17 @@ export class Runtime {
                 dueAt: null,
                 updatedAt: now,
                 startedAt: now,
-                fingerprint: "",
                 userKey,
+                turnId: event.turnId,
                 messageId: null,
-                sessionId: null,
-                lastUserMessageAt: null,
+                superseded: false,
+                awaitingStart: false,
                 reviews: [],
               };
           if (!continuation) state.recoveries.push(r);
           r.failure = failure.kind;
-          r.fingerprint = fingerprint(event.timeline);
+          r.awaitingStart = false;
+          r.turnId = event.turnId;
           r.userKey = userKey;
           r.updatedAt = now;
           const next = nextRetry({
@@ -564,14 +575,14 @@ export class Runtime {
             config: this.config,
             random: this.random(),
           });
-          if ("dueAt" in next && userKey !== null) {
+          if ("dueAt" in next) {
             r.phase = "waiting";
             r.dueAt = next.dueAt;
             r.reason = failureLabels[failure.kind];
           } else {
             r.phase = "exhausted";
             r.dueAt = null;
-            r.reason = `${failureLabels[failure.kind]}：${"stopped" in next ? next.stopped : "无法确定当前用户消息"}`;
+            r.reason = `${failureLabels[failure.kind]}：${next.stopped}`;
             this.enqueue(state, {
               ...base,
               id: key,
@@ -594,32 +605,39 @@ export class Runtime {
       });
       if (changed) await this.publish(changed);
       this.wake();
-    });
+    }).finally(() => this.pendingEnds.delete(key));
   }
-  async turnStarted(agentId: string): Promise<void> {
+  async turnStarted(
+    agentId: string,
+    turnId: string | null = null,
+  ): Promise<void> {
     if (this.ownedReviewers.has(agentId)) return;
+    if (turnId !== null && this.executionStarts.get(agentId)?.turnId === turnId)
+      return;
+    this.executionStarts.set(agentId, { key: randomUUID(), turnId });
     this.bump(agentId);
     return this.lane(agentId, async () => {
       const r = this.storage.state
         .read()
-        .recoveries.findLast(
-          (item) => item.agentId === agentId && active(item),
-        );
+        .recoveries.findLast((item) => item.agentId === agentId);
       if (!r) return;
-      if (["waiting", "reviewing"].includes(r.phase)) {
-        await this.stopRecovery(r.id, "会话开始了新的执行，已取消旧恢复计划");
+      if (r.awaitingStart) {
+        // First start after our submitted continuation belongs to this budget.
+        await this.storage.state.update((state) => {
+          const current = state.recoveries.find((item) => item.id === r.id)!;
+          current.awaitingStart = false;
+          current.turnId = turnId;
+        });
         return;
       }
-      if (this.port) {
-        try {
-          const view = await this.port.inspect(agentId);
-          const key = userIdentity(view.items);
-          if (key !== r.messageId && key !== r.userKey)
-            await this.stopRecovery(r.id, "用户已接手会话");
-        } catch {
-          await this.stopRecovery(r.id, "无法核对新一轮执行，已停止自动恢复");
-        }
-      }
+      await this.storage.state.update((state) => {
+        state.recoveries.find((item) => item.id === r.id)!.superseded = true;
+      });
+      if (active(r))
+        await this.stopRecovery(
+          r.id,
+          "新的执行已开始，旧恢复计划已取消；若再次失败将重新判断",
+        );
     });
   }
   agentCreated(agentId: string): void {
@@ -867,17 +885,14 @@ export class Runtime {
       return;
     }
     if (this.closed) return;
-    if (
-      !view.available ||
-      !view.idle ||
-      fingerprint(view.items) !== r.fingerprint ||
-      this.generations.get(r.agentId) !== generation ||
-      (r.sessionId && r.sessionId !== view.sessionId)
-    ) {
-      await this.stopRecovery(id, "会话内容或状态已改变，已取消旧恢复计划");
+    if (this.generations.get(r.agentId) !== generation) {
+      await this.stopRecovery(
+        id,
+        "收到新的执行事件或取消操作，旧恢复计划已取消",
+      );
       return;
     }
-    let reviewedTimeline: string | null = null;
+    if (!(await this.checkRecoveryState(id, view))) return;
     if (this.config.recovery.review.enabled) {
       if (this.reviewControllers.size >= 2) {
         await this.storage.state.update((state) => {
@@ -886,24 +901,38 @@ export class Runtime {
         });
         return;
       }
-      if (!(await this.reviewRecovery(r, view.items, generation))) return;
-      reviewedTimeline = digest(
-        view.items.filter((item) => item.type !== "plugin"),
-      );
+      let items: readonly AgentTimelineItem[];
+      try {
+        if (!this.port.history) throw new Error("复核摘录接口不可用");
+        items = await this.port.history(r.agentId);
+      } catch {
+        await this.stopRecovery(
+          id,
+          "无法读取 AI 复核所需的会话摘录，已暂停自动恢复",
+          "paused",
+        );
+        return;
+      }
+      if (this.closed) return;
+      if (this.generations.get(r.agentId) !== generation) {
+        await this.stopRecovery(
+          id,
+          "读取复核摘录期间收到新的执行事件，旧恢复计划已取消",
+        );
+        return;
+      }
+      // Fetching the excerpt yields; other agents may have filled both slots.
+      if (this.reviewControllers.size >= 2) {
+        await this.storage.state.update((state) => {
+          const row = state.recoveries.find((item) => item.id === id)!;
+          if (row.phase === "waiting") row.dueAt = this.now() + 1000;
+        });
+        return;
+      }
+      if (!(await this.reviewRecovery(r, items, generation))) return;
     }
-    const messageId = randomUUID();
-    await this.storage.state.update((state) => {
-      const current = state.recoveries.find((item) => item.id === id)!;
-      if (!["waiting", "reviewing"].includes(current.phase)) return;
-      current.phase = "dispatching";
-      current.attempts++;
-      current.messageId = messageId;
-      current.sessionId = view.sessionId;
-      current.lastUserMessageAt = view.lastUserMessageAt;
-      current.updatedAt = this.now();
-      current.dueAt = null;
-    });
-    // Recheck after the durable intent write, which can yield to user activity.
+    // Recheck immediately before recording the send intent. Only execution
+    // state matters; neither content changes nor absent history block recovery.
     let check;
     try {
       check = await this.port.inspect(r.agentId);
@@ -918,21 +947,41 @@ export class Runtime {
     if (
       !this.config.enabled ||
       !this.config.recovery.enabled ||
-      current?.phase !== "dispatching" ||
-      current.attempts > this.config.recovery.maxAttempts ||
+      !current ||
+      !["waiting", "reviewing"].includes(current.phase) ||
+      current.attempts >= this.config.recovery.maxAttempts ||
       this.now() >=
         r.startedAt + this.config.recovery.maxElapsedMinutes * 60_000 ||
-      this.generations.get(r.agentId) !== generation ||
-      !check.available ||
-      !check.idle ||
-      check.sessionId !== view.sessionId ||
-      check.lastUserMessageAt !== view.lastUserMessageAt ||
-      fingerprint(check.items) !== r.fingerprint ||
-      (reviewedTimeline !== null &&
-        reviewedTimeline !==
-          digest(check.items.filter((item) => item.type !== "plugin")))
+      this.generations.get(r.agentId) !== generation
     ) {
       await this.stopRecovery(id, "用户操作或配置变更，已取消发送");
+      return;
+    }
+    if (!(await this.checkRecoveryState(id, check))) return;
+    const messageId = randomUUID();
+    await this.storage.state.update((state) => {
+      const current = state.recoveries.find((item) => item.id === id)!;
+      if (!["waiting", "reviewing"].includes(current.phase)) return;
+      current.phase = "dispatching";
+      current.attempts++;
+      current.messageId = messageId;
+      current.awaitingStart = true;
+      current.updatedAt = this.now();
+      current.dueAt = null;
+    });
+    if (this.closed) return;
+    if (
+      this.generations.get(r.agentId) !== generation ||
+      !this.config.enabled ||
+      !this.config.recovery.enabled
+    ) {
+      await this.storage.state.update((state) => {
+        state.recoveries.find((item) => item.id === id)!.awaitingStart = false;
+      });
+      await this.stopRecovery(
+        id,
+        "提交前收到新的执行事件或取消操作，已取消发送",
+      );
       return;
     }
     try {
@@ -956,6 +1005,30 @@ export class Runtime {
       }
     });
     if (changed) await this.publish(changed);
+  }
+  private async checkRecoveryState(
+    id: string,
+    view: Awaited<ReturnType<PaseoPort["inspect"]>>,
+  ): Promise<boolean> {
+    if (!view.available) {
+      await this.stopRecovery(
+        id,
+        "会话已关闭、归档或提供方不可用，已暂停自动恢复",
+        "paused",
+      );
+    } else if (view.pendingPermissions > 0) {
+      await this.stopRecovery(id, "正在等待权限确认，已暂停自动恢复", "paused");
+    } else if (!view.idle) {
+      await this.stopRecovery(id, "会话正在执行或初始化，无需额外发送继续指令");
+    } else if (view.status !== "error") {
+      await this.stopRecovery(
+        id,
+        "会话当前已停止且未处于错误状态，旧恢复计划已取消",
+      );
+    } else {
+      return true;
+    }
+    return false;
   }
   private async cleanupReviewer(agentId: string): Promise<boolean> {
     if (!this.port?.archiveReviewer) return false;

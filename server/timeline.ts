@@ -5,10 +5,6 @@ export function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-// Plugin projections are never part of task identity or failure classification.
-export function fingerprint(items: readonly AgentTimelineItem[]): string {
-  return digest([userIdentity(items), finalText(items), currentError(items)]);
-}
 export function latestUser(items: readonly AgentTimelineItem[]) {
   return items.findLast((i) => i.type === "user_message");
 }

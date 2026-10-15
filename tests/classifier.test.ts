@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classify } from "../server/classifier";
 import { nextRetry } from "../server/policy";
 import { config } from "./fixtures";
-import { fingerprint } from "../server/timeline";
+import { finalText, currentError } from "../server/timeline";
 
 describe("failure classification", () => {
   it.each([
@@ -97,7 +97,7 @@ describe("failure classification", () => {
       ).toHaveProperty("stopped");
     }
   });
-  it("ignores plugin cards and old-turn failures when comparing task state", () => {
+  it("ignores old-turn errors when classifying the latest result", () => {
     const current = [
       { type: "user_message" as const, text: "new", clientMessageId: "u2" },
       { type: "assistant_message" as const, text: "done" },
@@ -107,6 +107,7 @@ describe("failure classification", () => {
       { type: "error" as const, message: "ECONNRESET" },
       ...current,
     ];
-    expect(fingerprint(current)).toBe(fingerprint(old));
+    expect(finalText(old)).toBe(finalText(current));
+    expect(currentError(old)).toBe("");
   });
 });
