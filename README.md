@@ -7,6 +7,7 @@ Paseo 原生通知与自动恢复插件。任务结束、失败或等待权限�
 ## 功能
 
 - **九种通知渠道**：通用 Webhook、飞书 / Lark、企业微信、Telegram、钉钉、Bark、ntfy、Slack、Discord。
+- **消息模板与 Pattern**：自定义标题、正文，使用内置占位符和正则提取补全信息；页面内提供示例和实时预览。
 - **分层选择接收目标**：Host、工作区、会话可以分别选择渠道，也可跟随上级或关闭通知。
 - **定时任务绑定**：给 Paseo Schedule 固定接收渠道，跨次运行有效。
 - **自动恢复与可选 AI 复核**：控制重试次数和总时间，识别需要人工处理的中断。
@@ -22,6 +23,7 @@ Paseo 原生通知与自动恢复插件。任务结束、失败或等待权限�
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 开始使用或更新插件 | [安装与更新](docs/wiki/Installation-and-updates.md) · [快速上手](docs/wiki/Quick-start.md) · [版本与更新检查](docs/wiki/Updates-and-releases.md)          |
 | 连接通知平台       | [渠道配置目录](docs/wiki/Channels.md) · [通知事件与内容](docs/wiki/Notifications.md)                                                                      |
+| 自定义消息内容     | [消息模板与 Pattern](docs/wiki/Message-templates.md)                                                                                                      |
 | 设置群组与继承     | [通知去向与继承](docs/wiki/Notification-routing.md) · [定时任务](docs/wiki/Scheduled-tasks.md)                                                            |
 | 保存与同步配置     | [设置与凭据](docs/wiki/Settings-and-credentials.md) · [跨 Host 导入导出](docs/wiki/Configuration-transfer.md)                                             |
 | 自动继续任务       | [自动恢复](docs/wiki/Automatic-recovery.md) · [AI 复核](docs/wiki/AI-review.md)                                                                           |
