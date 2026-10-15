@@ -29,17 +29,19 @@ CI 默认只有读取仓库权限。发布流程复用同一组检查；发布�
 
 ## 发布一个版本
 
+项目约定：**创建或推送版本标签时，必须一并完成对应的正式 Release**。标签推送只是开始；继续跟进 Release 工作流，确认页面已公开且三个下载文件齐全、校验正确后，才算发布完成。失败时修复或重跑原工作流，不能把仅有标签的状态报告为已发布。
+
 维护者决定语义版本号：修复增加 patch，新功能增加 minor，不兼容调整增加 major；CI 不根据每次提交猜测版本。
 
 ```sh
-npm run version:set -- 0.2.1
+npm run version:set -- 0.2.2
 ```
 
 该命令同步 `package.json`、锁文件和 `shared/version.ts`。补充变更说明，执行检查，把变更提交到 main，并等待 Checks 成功。随后在同一提交创建、推送标签：
 
 ```sh
-git tag v0.2.1
-git push origin v0.2.1
+git tag -a v0.2.2 -m "Release v0.2.2"
+git push origin v0.2.2
 ```
 
 [Release](https://github.com/Makiras/paseo-notify-ts/actions/workflows/release.yml) 核对标签与文件版本一致、提交属于 main，并运行完整检查。发布任务再次核对构件中的版本、提交、文件名和 SHA-256；先创建草稿、上传三个文件，再公开发布：
@@ -49,6 +51,8 @@ git push origin v0.2.1
 - `release.json`：版本、标签、提交、Paseo 要求、归档名和校验值。
 
 已公开的 Release 不被覆盖；需要修正时发布新版本。失败留下的草稿可以通过重跑原标签工作流继续。普通 main 的 CI 包可能包含尚未发布的变更，不会被自动检查当作正式新版。
+
+上面的版本号是示例，以本次待发布且尚未使用的版本为准。发布后从 Release 下载三个文件，核对归档 SHA-256、`release.json` 的版本和提交号，并为用户补充清晰的变更说明。
 
 ## Wiki 维护与发布
 
