@@ -87,8 +87,8 @@ export function RoutingPanel(
           onPress={() => void settings.reload()}
         />
       </SettingsCard>
-      {context.agentId && (
-        <SettingsSection title="Session 通知渠道">
+      {context.agentId ? (
+        <SettingsSection title="会话通知设置">
           <ChannelSelection
             channels={settings.values.channels}
             value={settings.values.routing.sessions[context.agentId]}
@@ -97,16 +97,17 @@ export function RoutingPanel(
             onChange={(v) => void change("sessions", context.agentId!, v)}
           />
         </SettingsSection>
+      ) : (
+        <SettingsSection title="工作区通知设置">
+          <ChannelSelection
+            channels={settings.values.channels}
+            value={settings.values.routing.workspaces[props.workspaceId]}
+            inheritable
+            disabled={busy || settings.saving}
+            onChange={(v) => void change("workspaces", props.workspaceId, v)}
+          />
+        </SettingsSection>
       )}
-      <SettingsSection title="Workspace 通知渠道">
-        <ChannelSelection
-          channels={settings.values.channels}
-          value={settings.values.routing.workspaces[props.workspaceId]}
-          inheritable
-          disabled={busy || settings.saving}
-          onChange={(v) => void change("workspaces", props.workspaceId, v)}
-        />
-      </SettingsSection>
     </View>
   );
 }

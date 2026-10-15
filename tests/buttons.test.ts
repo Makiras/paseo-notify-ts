@@ -3,7 +3,6 @@ import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { installRoutingButtons } from "../client/buttons";
 
 vi.mock("@getpaseo/plugin/client", () => ({ useSettings: vi.fn() }));
-vi.mock("@getpaseo/plugin/client/react-native", () => ({ Icon: "Icon" }));
 vi.mock("react-native", () => ({ View: "View" }));
 vi.mock("@getpaseo/plugin/client/ui", () =>
   Object.fromEntries(
@@ -44,8 +43,8 @@ function directory(entries: unknown[]) {
 async function flush() {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 }
-describe("owned notification button directories", () => {
-  it("registers native controls, ignores reviewers, follows moves and releases both streams", async () => {
+describe("owned notification button directory", () => {
+  it("registers only composer controls, ignores reviewers, follows moves and releases its stream", async () => {
     const agents = directory([
       { agent: { id: "a", workspaceId: "w" } },
       {
@@ -56,21 +55,22 @@ describe("owned notification button directories", () => {
         },
       },
     ]);
-    const workspaces = directory([{ id: "w" }]);
+    const listWorkspaces = vi.fn();
     const button = () => ({ update: vi.fn(), remove: vi.fn() });
     const addComposerPill = vi.fn(button),
       addHeaderButton = vi.fn(button);
     const stop = installRoutingButtons({
       paseo: {
         agents: { list: vi.fn(async () => agents.page) },
-        workspaces: { list: vi.fn(async () => workspaces.page) },
+        workspaces: { list: listWorkspaces },
       },
       addComposerPill,
       addHeaderButton,
     } as unknown as PluginClientContext);
     await flush();
     expect(addComposerPill).toHaveBeenCalledTimes(1);
-    expect(addHeaderButton).toHaveBeenCalledTimes(1);
+    expect(addHeaderButton).not.toHaveBeenCalled();
+    expect(listWorkspaces).not.toHaveBeenCalled();
     agents.update({
       type: "agent_update",
       payload: { kind: "upsert", agent: { id: "a", workspaceId: "next" } },
@@ -87,11 +87,7 @@ describe("owned notification button directories", () => {
       addComposerPill.mock.results[1]!.value.remove,
     ).toHaveBeenCalledOnce();
     await stop();
-    expect(workspaces.subscription.release).toHaveBeenCalledOnce();
     expect(agents.subscription.release).toHaveBeenCalledOnce();
-    expect(
-      addHeaderButton.mock.results[0]!.value.remove,
-    ).toHaveBeenCalledOnce();
   });
   it("fetches remaining pages and applies live removals over stale bootstrap rows", async () => {
     const agents = directory([{ agent: { id: "a", workspaceId: "w" } }]);
@@ -111,15 +107,12 @@ describe("owned notification button directories", () => {
     const list = vi.fn(async (options: { page: { cursor?: string } }) =>
       options.page.cursor ? later : agents.page,
     );
-    const workspaces = directory([]);
     const addComposerPill = vi.fn(() => ({ update: vi.fn(), remove: vi.fn() }));
     const stop = installRoutingButtons({
       paseo: {
         agents: { list },
-        workspaces: { list: vi.fn(async () => workspaces.page) },
       },
       addComposerPill,
-      addHeaderButton: vi.fn(),
     } as unknown as PluginClientContext);
     await flush();
     const observer = agents.subscription.subscribe.mock.calls[0]![0]!;
@@ -144,7 +137,6 @@ describe("owned notification button directories", () => {
   });
   it("releases a late bootstrap without registering controls after unload", async () => {
     const agents = directory([{ agent: { id: "a", workspaceId: "w" } }]);
-    const workspaces = directory([]);
     let resolve!: (value: unknown) => void;
     const pending = new Promise((done) => {
       resolve = done;
@@ -153,10 +145,8 @@ describe("owned notification button directories", () => {
     const stop = installRoutingButtons({
       paseo: {
         agents: { list: vi.fn(() => pending) },
-        workspaces: { list: vi.fn(async () => workspaces.page) },
       },
       addComposerPill,
-      addHeaderButton: vi.fn(),
     } as unknown as PluginClientContext);
     await stop();
     resolve(agents.page);

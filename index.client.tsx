@@ -27,28 +27,28 @@ export default function contribute(client: PluginClientContext) {
   });
   client.addWorkspacePanel({
     id: "workspace-routing",
-    title: "通知渠道",
+    title: "工作区通知设置",
     icon: "BellRing",
     context: "workspace",
     Component: RoutingPanel,
   });
   client.addWorkspacePanel({
     id: "session-routing",
-    title: "通知渠道",
+    title: "会话通知设置",
     icon: "BellRing",
     context: "agent",
     Component: RoutingPanel,
   });
   client.addCommandCenterItem({
     id: "workspace-routing",
-    title: "Notifier：工作区通知渠道",
+    title: "Notifier：工作区通知设置",
     icon: "BellRing",
     context: "workspace",
     onSelect: ({ openPanel }) => openPanel("workspace-routing"),
   });
   client.addCommandCenterItem({
     id: "session-routing",
-    title: "Notifier：会话通知渠道",
+    title: "Notifier：会话通知设置",
     icon: "BellRing",
     context: "agent",
     onSelect: ({ openPanel }) => openPanel("session-routing"),

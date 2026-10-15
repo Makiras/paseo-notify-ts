@@ -1,22 +1,13 @@
-import { useEffect } from "react";
-import {
-  useSettings,
-  type PluginButtonIconProps,
-  type PluginButtonRegistration,
-  type PluginClientContext,
+import type {
+  PluginButtonRegistration,
+  PluginClientContext,
 } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
-import { preferences } from "../shared/config";
-import { routeLabel } from "../shared/routing";
 import { RoutingPanel } from "./routing";
 
-type Target = { id: string; workspaceId: string; agentId?: string };
+type Target = { id: string; workspaceId: string; agentId: string };
 type Page = { pageInfo: { nextCursor: string | null; hasMore: boolean } };
 type AgentPage = Awaited<
   ReturnType<PluginClientContext["paseo"]["agents"]["list"]>
->;
-type WorkspacePage = Awaited<
-  ReturnType<PluginClientContext["paseo"]["workspaces"]["list"]>
 >;
 type HostSubscription = NonNullable<AgentPage["subscription"]>;
 type DirectoryMessage = Parameters<
@@ -139,9 +130,8 @@ export function installRoutingButtons(client: PluginClientContext) {
     string,
     { target: Target; button: PluginButtonRegistration }
   >();
-  function render(kind: "workspace" | "session", targets: Map<string, Target>) {
+  function render(targets: Map<string, Target>) {
     for (const [key, item] of registrations) {
-      if (!key.startsWith(`${kind}:`)) continue;
       const next = targets.get(item.target.id);
       if (!next || next.workspaceId !== item.target.workspaceId) {
         item.button.remove();
@@ -149,40 +139,21 @@ export function installRoutingButtons(client: PluginClientContext) {
       }
     }
     for (const target of targets.values()) {
-      const key = `${kind}:${target.id}`;
+      const key = target.id;
       if (registrations.has(key)) continue;
-      let registration: PluginButtonRegistration | undefined;
-      function RouteIcon(props: PluginButtonIconProps) {
-        const settings = useSettings(preferences);
-        const label =
-          settings.status === "ready"
-            ? `通知：${routeLabel(settings.values, target)}`
-            : "通知渠道";
-        useEffect(() => {
-          registration?.update({
-            label: label.length > 48 ? `${label.slice(0, 47)}…` : label,
-          });
-        }, [label]);
-        return <Icon name="BellRing" size={props.size} color={props.color} />;
-      }
-      const button = {
-        title: "通知渠道",
-        label: "通知渠道",
-        icon: RouteIcon,
-        behavior: { kind: "popover" as const, Content: RoutingPanel },
-      };
-      registration = target.agentId
-        ? client.addComposerPill({
-            id: "notification-routing",
-            workspaceId: target.workspaceId,
-            agentId: target.agentId,
-            button,
-          })
-        : client.addHeaderButton({
-            id: "notification-routing",
-            workspaceId: target.workspaceId,
-            button,
-          });
+      const registration = client.addComposerPill({
+        id: "notification-routing",
+        workspaceId: target.workspaceId,
+        agentId: target.agentId,
+        button: {
+          title: "会话通知设置",
+          // Paseo currently requires a text label on composer pills. Keep it
+          // constant and short; channel names and inheritance belong inside.
+          label: "通知",
+          icon: "BellRing",
+          behavior: { kind: "popover", Content: RoutingPanel },
+        },
+      });
       registrations.set(key, { target, button: registration });
     }
   }
@@ -219,33 +190,11 @@ export function installRoutingButtons(client: PluginClientContext) {
               value: agentTarget(message.payload.agent),
             }
         : null,
-    apply: (targets) => render("session", targets),
-  });
-  const stopWorkspaces = watchDirectory<WorkspacePage>({
-    load: (cursor, subscribe) =>
-      client.paseo.workspaces.list({
-        page: { limit: 200, cursor },
-        ...(subscribe ? { subscribe: {} } : {}),
-      }),
-    entries: (page) =>
-      page.entries.map((w) => ({ id: w.id, workspaceId: w.id })),
-    change: (message) =>
-      message.type === "workspace_update"
-        ? message.payload.kind === "remove"
-          ? { id: message.payload.id, value: null }
-          : {
-              id: message.payload.workspace.id,
-              value: {
-                id: message.payload.workspace.id,
-                workspaceId: message.payload.workspace.id,
-              },
-            }
-        : null,
-    apply: (targets) => render("workspace", targets),
+    apply: render,
   });
   return async () => {
     for (const { button } of registrations.values()) button.remove();
     registrations.clear();
-    await Promise.allSettled([stopAgents(), stopWorkspaces()]);
+    await stopAgents();
   };
 }
