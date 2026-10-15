@@ -1026,6 +1026,25 @@ export class Runtime {
         "会话当前已停止且未处于错误状态，旧恢复计划已取消",
       );
     } else {
+      // A newer terminal callback can be delayed or missed during reconnect.
+      // Honor explicit hard failures reported by the current snapshot too;
+      // do not reinterpret generic/missing error text as a changed conversation.
+      const latest = view.error
+        ? classify({ kind: "failed", error: { message: view.error } })
+        : null;
+      if (
+        latest &&
+        ["quota_exhausted", "context_exhausted", "policy_blocked"].includes(
+          latest.kind,
+        )
+      ) {
+        await this.stopRecovery(
+          id,
+          `当前错误为${failureLabels[latest.kind]}，需要人工处理`,
+          "paused",
+        );
+        return false;
+      }
       return true;
     }
     return false;

@@ -31,6 +31,7 @@ describe("Paseo adapter", () => {
       idle: true,
       status: "error",
       pendingPermissions: 0,
+      error: null,
     });
     expect(s.refetch).not.toHaveBeenCalled();
   });

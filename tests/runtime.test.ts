@@ -92,6 +92,25 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it.each([
+    "insufficient_quota",
+    "content_policy_violation",
+    "context length exceeded",
+  ])("respects a newer hard failure in the snapshot: %s", async (error) => {
+    const s = await setup();
+    await s.r.turnEnded(event());
+    s.setView({ error });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).not.toHaveBeenCalled();
+    expect(s.store.state.read().recoveries[0]).toMatchObject({
+      phase: "paused",
+      attempts: 0,
+    });
+    expect(s.store.state.read().recoveries[0]!.reason).toContain(
+      "需要人工处理",
+    );
+  });
+
   it("honors manual cancellation after a continuation starts with its own turn ID", async () => {
     const s = await setup();
     await s.r.turnEnded({ ...event(), turnId: "initial" });

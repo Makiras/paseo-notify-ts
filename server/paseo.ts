@@ -12,6 +12,7 @@ export interface AgentView {
   idle: boolean;
   status: string;
   pendingPermissions: number;
+  error?: string | null;
 }
 export interface PaseoPort {
   inspect(agentId: string): Promise<AgentView>;
@@ -41,6 +42,7 @@ export function paseoPort(paseo: PaseoApi): PaseoPort {
           snapshot.pendingPermissions.length === 0,
         status: snapshot.status,
         pendingPermissions: snapshot.pendingPermissions.length,
+        error: snapshot.lastError ?? null,
       };
     },
     async history(agentId) {
