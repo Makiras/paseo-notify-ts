@@ -221,11 +221,24 @@ async function checkBrowser(name) {
     await page
       .getByRole("button", { name: "展开填写帮助", exact: true })
       .click();
+    await expect(page.getByText("占位符用法", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Pattern 如何填写", { exact: true }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "收起填写帮助", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "展开规则说明", exact: true })
+      .click();
     await expect(
       page.getByText("Pattern 如何填写", { exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "添加工单号示例", exact: true }),
+    ).toHaveCount(0);
     await page
-      .getByRole("button", { name: "收起填写帮助", exact: true })
+      .getByRole("button", { name: "收起规则说明", exact: true })
       .click();
     await page
       .getByRole("button", { name: "展开提取规则", exact: true })
@@ -234,6 +247,51 @@ async function checkBrowser(name) {
       .getByRole("button", { name: "添加工单号示例", exact: true })
       .click();
     await expect(preview).toContainText("工单号：PROJ-123");
+    const ruleEditor = page.getByTestId("extraction-rule-editor");
+    await expect(
+      ruleEditor.getByText("正在编辑：custom.ticket", { exact: true }),
+    ).toBeVisible();
+    const ticketPattern = await ruleEditor
+      .getByLabel("匹配规则（Pattern）", { exact: true })
+      .inputValue();
+    await page
+      .getByRole("button", { name: "添加提取规则", exact: true })
+      .click();
+    await expect(
+      ruleEditor.getByText("正在编辑：custom.field", { exact: true }),
+    ).toBeVisible();
+    await ruleEditor.getByLabel("变量名", { exact: true }).fill("draft");
+    await ruleEditor
+      .getByLabel("匹配规则（Pattern）", { exact: true })
+      .fill("LOCAL-[0-9]+");
+    await ruleEditor.getByRole("button", { name: /^编辑提取规则:/ }).click();
+    await page
+      .getByRole("menuitem", { name: "custom.ticket", exact: true })
+      .click();
+    await expect(
+      ruleEditor.getByText("正在编辑：custom.ticket", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      ruleEditor.getByLabel("匹配规则（Pattern）", { exact: true }),
+    ).toHaveValue(ticketPattern);
+    await ruleEditor.getByRole("button", { name: /^编辑提取规则:/ }).click();
+    await page
+      .getByRole("menuitem", { name: "custom.draft", exact: true })
+      .click();
+    await expect(
+      ruleEditor.getByLabel("匹配规则（Pattern）", { exact: true }),
+    ).toHaveValue("LOCAL-[0-9]+");
+    await ruleEditor
+      .getByRole("button", { name: "删除提取规则", exact: true })
+      .click();
+    await expect(
+      ruleEditor.getByText("正在编辑：custom.ticket", { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: join(artifacts, "rule-selection-desktop.png"),
+      fullPage: true,
+    });
+
     await page
       .getByRole("button", { name: "编辑示例数据", exact: true })
       .click();
@@ -303,6 +361,17 @@ async function checkBrowser(name) {
       .getByLabel("服务根地址", { exact: true })
       .fill(`http://127.0.0.1:${receiverPort}`);
     await page.getByLabel("Topic", { exact: true }).fill("browser-smoke");
+    const channelEditor = page.getByTestId("notification-channel-editor");
+    await expect(
+      channelEditor.getByText("正在编辑：ntfy", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      channelEditor.getByRole("button", { name: /^编辑渠道:/ }),
+    ).toBeVisible();
+    await expect(
+      channelEditor.getByRole("button", { name: "添加渠道", exact: true }),
+    ).toHaveCount(0);
+
     await page.getByRole("button", { name: "保存设置", exact: true }).click();
     await expect(
       page.getByText("设置和凭据已保存", { exact: true }),
@@ -326,6 +395,29 @@ async function checkBrowser(name) {
     await page
       .getByRole("textbox", { name: "名称", exact: true })
       .fill("CI 卡片群");
+    await expect(
+      channelEditor.getByText("正在编辑：CI 卡片群", { exact: true }),
+    ).toBeVisible();
+    const draftUrl = "https://example.com/unsent-draft";
+    await channelEditor
+      .getByLabel("Webhook 地址", { exact: true })
+      .fill(draftUrl);
+    await channelEditor.getByRole("button", { name: /^编辑渠道:/ }).click();
+    await page.getByRole("menuitem", { name: "1. ntfy", exact: true }).click();
+    await expect(
+      channelEditor.getByText("正在编辑：ntfy", { exact: true }),
+    ).toBeVisible();
+    await channelEditor.getByRole("button", { name: /^编辑渠道:/ }).click();
+    await page
+      .getByRole("menuitem", {
+        name: "2. CI 卡片群（凭据待保存）",
+        exact: true,
+      })
+      .click();
+    await expect(
+      channelEditor.getByLabel("Webhook 地址", { exact: true }),
+    ).toHaveValue(draftUrl);
+    await channelEditor.getByLabel("Webhook 地址", { exact: true }).fill("");
     await page
       .getByRole("button", { name: "消息类型: 文本消息", exact: true })
       .click();
@@ -429,6 +521,17 @@ async function checkBrowser(name) {
       .getByRole("button", { name: "展开提取规则", exact: true })
       .click();
     await expect(pattern).toHaveValue(validPattern);
+    await ruleEditor
+      .getByRole("button", { name: /^编辑提取规则:/ })
+      .scrollIntoViewIfNeeded();
+    const ruleBounds = await ruleEditor.boundingBox();
+    assert.ok(
+      ruleBounds && ruleBounds.x >= 0 && ruleBounds.x + ruleBounds.width <= 390,
+    );
+    await page.screenshot({
+      path: join(artifacts, "rule-selection-mobile.png"),
+      fullPage: true,
+    });
     await page
       .getByRole("button", { name: "收起提取规则", exact: true })
       .click();

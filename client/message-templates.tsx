@@ -24,6 +24,7 @@ import {
 import { renderNotification } from "../shared/templates";
 import { notificationExample } from "../shared/notification-example";
 import { validationMessage } from "./validation";
+import { SelectedEditor } from "./selected-editor";
 
 type Theme = PluginSurfaceProps["theme"];
 
@@ -128,6 +129,7 @@ export function MessageTemplates({
 }) {
   const [showHelp, setShowHelp] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showRuleHelp, setShowRuleHelp] = useState(false);
   const [showSamples, setShowSamples] = useState(false);
   const [wide, setWide] = useState(false);
   const [selected, setSelected] = useState(0);
@@ -384,6 +386,167 @@ export function MessageTemplates({
         expandLabel="展开提取规则"
         collapseLabel="收起提取规则"
       >
+        <View style={{ padding: 8, gap: 12 }}>
+          <SettingsSection title="添加规则">
+            <SettingsCard>
+              {extractionExamples.map((example) => (
+                <SettingsAction
+                  key={example.rule.name}
+                  label={`${example.label}示例`}
+                  hint="添加预设规则，并在正文末尾加入对应变量。"
+                  actionLabel={`添加${example.label}示例`}
+                  disabled={disabled || value.rules.length >= 12}
+                  onPress={() => addRule(example.rule, example.label)}
+                />
+              ))}
+              <SettingsAction
+                label="新增自定义规则"
+                actionLabel="添加提取规则"
+                disabled={disabled || value.rules.length >= 12}
+                onPress={() =>
+                  addRule({
+                    name: "field",
+                    source: "preview",
+                    pattern: "",
+                    flags: "",
+                    group: 0,
+                    fallback: "",
+                  })
+                }
+              />
+            </SettingsCard>
+          </SettingsSection>
+          {rule ? (
+            <SelectedEditor
+              theme={theme}
+              testID="extraction-rule-editor"
+              title={`正在编辑：custom.${rule.name || "未命名"}`}
+              hint="下方边框内的字段、匹配结果和删除操作只对应上方选中的规则。添加后会自动选中新规则。"
+              selector={
+                <SettingsSelect
+                  label="编辑提取规则"
+                  value={String(currentIndex)}
+                  options={value.rules.map((item, i) => ({
+                    value: String(i),
+                    label: `custom.${item.name || "未命名"}`,
+                  }))}
+                  onValueChange={(v) => setSelected(Number(v))}
+                />
+              }
+            >
+              <Field
+                label="变量名"
+                hint="给结果起一个英文名，例如 ticket，然后在通知中写 {{custom.ticket}}。使用小写字母、数字或下划线，并以字母开头。"
+                value={rule.name}
+                onChange={(name) => patchRule({ name })}
+                theme={theme}
+                maxLength={32}
+                disabled={disabled}
+              />
+              <SettingsSelect
+                label="提取来源"
+                value={rule.source}
+                options={[...extractionSources]}
+                onValueChange={(source) => {
+                  if (extractionSources.some((s) => s.value === source))
+                    patchRule({ source: source as ExtractionRule["source"] });
+                }}
+              />
+              <Field
+                label="匹配规则（Pattern）"
+                hint="填写用来查找内容的正则表达式，不加两端的 /。可以先添加上面的工单号或链接示例。"
+                value={rule.pattern}
+                onChange={(pattern) => patchRule({ pattern })}
+                theme={theme}
+                disabled={disabled}
+              />
+              {currentRuleErrors ? (
+                <SettingsRow
+                  label="当前规则需要修改"
+                  error={currentRuleErrors}
+                />
+              ) : extraction ? (
+                <SettingsRow
+                  label={`{{custom.${extraction.name}}} · ${extraction.matched ? "已匹配" : "使用默认值"}`}
+                  hint={extraction.value || "（空）"}
+                />
+              ) : null}
+              <Field
+                label="提取哪一部分（捕获组）"
+                hint="填 0 使用完整匹配结果；填 1 只取第一个括号中的内容，填 2 取第二个。"
+                value={Number.isNaN(rule.group) ? "" : String(rule.group)}
+                onChange={(text) =>
+                  patchRule({ group: text.trim() ? Number(text) : NaN })
+                }
+                theme={theme}
+                maxLength={2}
+                disabled={disabled}
+              />
+              {(
+                [
+                  ["i", "忽略大小写（i）"],
+                  ["m", "多行锚点（m）"],
+                  ["s", "点号匹配换行（s）"],
+                ] as const
+              ).map(([flag, label]) => (
+                <SettingsSwitch
+                  key={flag}
+                  label={label}
+                  value={rule.flags.includes(flag)}
+                  disabled={disabled}
+                  onValueChange={(enabled) =>
+                    patchRule({
+                      flags: enabled
+                        ? [...new Set(rule.flags + flag)].sort().join("")
+                        : rule.flags.replace(flag, ""),
+                    })
+                  }
+                />
+              ))}
+              <Field
+                label="未匹配默认值"
+                hint="找不到内容时显示什么，例如“未提供工单号”。留空则让这个变量保持为空。"
+                value={rule.fallback}
+                onChange={(fallback) => patchRule({ fallback })}
+                theme={theme}
+                disabled={disabled}
+              />
+              <SettingsAction
+                label={`正文引用：{{custom.${rule.name}}}`}
+                actionLabel="将变量加入正文"
+                disabled={disabled}
+                onPress={() =>
+                  patch({ body: `${value.body}\n{{custom.${rule.name}}}` })
+                }
+              />
+              <SettingsAction
+                label="删除当前规则"
+                hint="如模板正在引用此变量，请同时修改正文或标题。"
+                actionLabel="删除提取规则"
+                disabled={disabled}
+                onPress={() =>
+                  patch({
+                    rules: value.rules.filter((_, i) => i !== currentIndex),
+                  })
+                }
+              />
+            </SelectedEditor>
+          ) : (
+            <SettingsRow
+              label="还没有提取规则"
+              hint="在上方添加规则，添加后会在这里打开编辑区。"
+            />
+          )}
+        </View>
+      </Details>
+      <Details
+        label="提取规则说明与示例"
+        hint="查看提取范围、示例和正则写法。展开说明不会添加或修改规则。"
+        open={showRuleHelp}
+        onToggle={() => setShowRuleHelp(!showRuleHelp)}
+        expandLabel="展开规则说明"
+        collapseLabel="收起规则说明"
+      >
         <SettingsRow
           label="回复提取范围"
           hint={
@@ -393,140 +556,26 @@ export function MessageTemplates({
           }
         />
         {extractionExamples.map((example) => (
-          <SettingsAction
+          <SettingsRow
             key={example.rule.name}
             label={`${example.label}示例：${example.rule.pattern}`}
-            hint={`${example.explanation} 点击后添加规则，并在正文末尾加入变量。`}
-            actionLabel={`添加${example.label}示例`}
-            disabled={disabled || value.rules.length >= 12}
-            onPress={() => addRule(example.rule, example.label)}
+            hint={example.explanation}
           />
         ))}
-        <SettingsAction
-          label="新增自定义规则"
-          actionLabel="添加提取规则"
-          disabled={disabled || value.rules.length >= 12}
-          onPress={() =>
-            addRule({
-              name: "field",
-              source: "preview",
-              pattern: "",
-              flags: "",
-              group: 0,
-              fallback: "",
-            })
+        <SettingsRow
+          label="Pattern 如何填写"
+          hint={
+            "只填写表达式，不加 /.../ 包裹。例如“工单[：:]\\s*([A-Z]+-[0-9]+)”中，组 0 是整个匹配，组 1 是括号里的工单号。只取第一次匹配；没有匹配或捕获组没有值时使用默认值。"
           }
         />
-        {rule && (
-          <>
-            <SettingsSelect
-              label="编辑提取规则"
-              value={String(currentIndex)}
-              options={value.rules.map((item, i) => ({
-                value: String(i),
-                label: `custom.${item.name || "未命名"}`,
-              }))}
-              onValueChange={(v) => setSelected(Number(v))}
-            />
-            <Field
-              label="变量名"
-              hint="给结果起一个英文名，例如 ticket，然后在通知中写 {{custom.ticket}}。使用小写字母、数字或下划线，并以字母开头。"
-              value={rule.name}
-              onChange={(name) => patchRule({ name })}
-              theme={theme}
-              maxLength={32}
-              disabled={disabled}
-            />
-            <SettingsSelect
-              label="提取来源"
-              value={rule.source}
-              options={[...extractionSources]}
-              onValueChange={(source) => {
-                if (extractionSources.some((s) => s.value === source))
-                  patchRule({ source: source as ExtractionRule["source"] });
-              }}
-            />
-            <Field
-              label="匹配规则（Pattern）"
-              hint="填写用来查找内容的正则表达式，不加两端的 /。可以先添加上面的工单号或链接示例。"
-              value={rule.pattern}
-              onChange={(pattern) => patchRule({ pattern })}
-              theme={theme}
-              disabled={disabled}
-            />
-            {currentRuleErrors ? (
-              <SettingsRow label="当前规则需要修改" error={currentRuleErrors} />
-            ) : extraction ? (
-              <SettingsRow
-                label={`{{custom.${extraction.name}}} · ${extraction.matched ? "已匹配" : "使用默认值"}`}
-                hint={extraction.value || "（空）"}
-              />
-            ) : null}
-            <Field
-              label="提取哪一部分（捕获组）"
-              hint="填 0 使用完整匹配结果；填 1 只取第一个括号中的内容，填 2 取第二个。"
-              value={Number.isNaN(rule.group) ? "" : String(rule.group)}
-              onChange={(text) =>
-                patchRule({ group: text.trim() ? Number(text) : NaN })
-              }
-              theme={theme}
-              maxLength={2}
-              disabled={disabled}
-            />
-            {(
-              [
-                ["i", "忽略大小写（i）"],
-                ["m", "多行锚点（m）"],
-                ["s", "点号匹配换行（s）"],
-              ] as const
-            ).map(([flag, label]) => (
-              <SettingsSwitch
-                key={flag}
-                label={label}
-                value={rule.flags.includes(flag)}
-                disabled={disabled}
-                onValueChange={(enabled) =>
-                  patchRule({
-                    flags: enabled
-                      ? [...new Set(rule.flags + flag)].sort().join("")
-                      : rule.flags.replace(flag, ""),
-                  })
-                }
-              />
-            ))}
-            <Field
-              label="未匹配默认值"
-              hint="找不到内容时显示什么，例如“未提供工单号”。留空则让这个变量保持为空。"
-              value={rule.fallback}
-              onChange={(fallback) => patchRule({ fallback })}
-              theme={theme}
-              disabled={disabled}
-            />
-            <SettingsAction
-              label={`正文引用：{{custom.${rule.name}}}`}
-              actionLabel="将变量加入正文"
-              disabled={disabled}
-              onPress={() =>
-                patch({ body: `${value.body}\n{{custom.${rule.name}}}` })
-              }
-            />
-            <SettingsAction
-              label="删除当前规则"
-              hint="如模板正在引用此变量，请同时修改正文或标题。"
-              actionLabel="删除提取规则"
-              disabled={disabled}
-              onPress={() =>
-                patch({
-                  rules: value.rules.filter((_, i) => i !== currentIndex),
-                })
-              }
-            />
-          </>
-        )}
+        <SettingsRow
+          label="支持的语法"
+          hint="使用 RE2 语法：字符集、分组、分支、重复等；不支持前后查找（lookaround）和反向引用。i 忽略大小写，m 让 ^/$ 匹配每行，s 让点号匹配换行。最多 12 条规则，每条 Pattern 最多 500 字符。变量重命名或删除后，请同步修改模板中的引用。"
+        />
       </Details>
       <Details
         label="占位符与填写帮助"
-        hint="不知道 {{title}} 等标记怎么用？展开查看含义、填写示例和匹配规则说明。"
+        hint="不知道 {{title}} 等标记怎么用？展开查看内置信息的含义和发送方式。"
         open={showHelp}
         onToggle={() => setShowHelp(!showHelp)}
         expandLabel="展开填写帮助"
@@ -539,16 +588,6 @@ export function MessageTemplates({
         {templateFields.map(([name, description]) => (
           <SettingsRow key={name} label={`{{${name}}}`} hint={description} />
         ))}
-        <SettingsRow
-          label="Pattern 如何填写"
-          hint={
-            "只填写表达式，不加 /.../ 包裹。例如“工单[：:]\\s*([A-Z]+-[0-9]+)”中，组 0 是整个匹配，组 1 是括号里的工单号。只取第一次匹配；没有匹配或捕获组没有值时使用默认值。"
-          }
-        />
-        <SettingsRow
-          label="支持的语法"
-          hint="使用 RE2 语法：字符集、分组、分支、重复等；不支持前后查找（lookaround）和反向引用。i 忽略大小写，m 让 ^/$ 匹配每行，s 让点号匹配换行。最多 12 条规则，每条 Pattern 最多 500 字符。变量重命名或删除后，请同步修改模板中的引用。"
-        />
         <SettingsRow
           label="发送方式"
           hint="ntfy、Bark 和飞书卡片会分开显示标题与正文；普通聊天消息把标题放在第一行。没有内容的变量会留空；一整行只有空变量时会省略。预览使用示例内容，平台可能会缩短过长的消息。"

@@ -46,6 +46,7 @@ import { withoutChannel } from "../shared/routing";
 import { ScheduleSelection } from "./schedules";
 import { UpdatesPanel } from "./updates";
 import { MessageTemplates } from "./message-templates";
+import { SelectedEditor } from "./selected-editor";
 import { settingsIssue } from "./validation";
 import {
   createSettingsNavigation,
@@ -125,6 +126,7 @@ function Editor({
   const activeChannel = draft.channels.some((c) => c.id === selectedChannel)
     ? selectedChannel
     : draft.channels[0]?.id;
+  const editingChannel = draft.channels.find((c) => c.id === activeChannel);
   const [newChannelKind, setNewChannelKind] =
     useState<(typeof channelKindSchema.options)[number]>("webhook");
   const [revision, setRevision] = useState(settings.revision);
@@ -391,24 +393,8 @@ function Editor({
         pointerEvents={transferBusy || busy ? "none" : "auto"}
       >
         <SettingsPanel active={section === "channels"}>
-          <SettingsSection title="渠道管理">
+          <SettingsSection title="添加渠道">
             <SettingsCard>
-              {draft.channels.length ? (
-                <SettingsSelect
-                  label="编辑渠道"
-                  value={activeChannel ?? ""}
-                  options={draft.channels.map((c, index) => ({
-                    value: c.id,
-                    label: `${index + 1}. ${c.name || channelNames[c.kind]}${credentialStates[c.id]?.dirty ? "（凭据待保存）" : ""}`,
-                  }))}
-                  onValueChange={setSelectedChannel}
-                />
-              ) : (
-                <SettingsRow
-                  label="还没有通知渠道"
-                  hint="先选择平台，点击“添加渠道”，再填写接收消息的地址或机器人信息。"
-                />
-              )}
               <SettingsSelect
                 label="新渠道平台"
                 value={newChannelKind}
@@ -441,44 +427,72 @@ function Editor({
               />
             </SettingsCard>
           </SettingsSection>
-          {draft.channels.map((channel) => (
-            <SettingsPanel
-              key={`${channel.id}:${channel.kind}`}
-              active={activeChannel === channel.id}
+          {editingChannel ? (
+            <SelectedEditor
+              theme={theme}
+              testID="notification-channel-editor"
+              title={`正在编辑：${editingChannel.name || channelNames[editingChannel.kind]}`}
+              hint="下方边框内的设置、连接信息、测试和移除操作只对应上方选中的渠道。切换不会清空未保存的内容。"
+              selector={
+                <SettingsSelect
+                  label="编辑渠道"
+                  value={activeChannel ?? ""}
+                  options={draft.channels.map((c, index) => ({
+                    value: c.id,
+                    label: `${index + 1}. ${c.name || channelNames[c.kind]}${credentialStates[c.id]?.dirty ? "（凭据待保存）" : ""}`,
+                  }))}
+                  onValueChange={setSelectedChannel}
+                />
+              }
             >
-              <ChannelEditor
-                ref={(editor) => {
-                  if (editor) credentialEditors.current.set(channel.id, editor);
-                  else credentialEditors.current.delete(channel.id);
-                }}
-                settingsKey={formKey}
-                disabled={busy || transferBusy}
-                onCredentialState={onCredentialState}
-                channel={channel}
-                format={draft.notifications}
-                theme={theme}
-                saved={settings.values.channels.some(
-                  (c) => c.id === channel.id && c.kind === channel.kind,
-                )}
-                configured={credentials.some(
-                  (c) =>
-                    c.id === channel.id &&
-                    c.kind === channel.kind &&
-                    c.configured,
-                )}
-                onChange={(next) =>
-                  patch({
-                    channels: draft.channels.map((c) =>
-                      c.id === next.id ? next : c,
-                    ),
-                  })
-                }
-                onRemove={() => patch(withoutChannel(draft, channel.id))}
-                onCredentialsSaved={() => credentialsSaved(channel)}
-                onCredentialsChanged={() => void refresh()}
+              {draft.channels.map((channel) => (
+                <SettingsPanel
+                  key={`${channel.id}:${channel.kind}`}
+                  active={activeChannel === channel.id}
+                >
+                  <ChannelEditor
+                    ref={(editor) => {
+                      if (editor)
+                        credentialEditors.current.set(channel.id, editor);
+                      else credentialEditors.current.delete(channel.id);
+                    }}
+                    settingsKey={formKey}
+                    disabled={busy || transferBusy}
+                    onCredentialState={onCredentialState}
+                    channel={channel}
+                    format={draft.notifications}
+                    theme={theme}
+                    saved={settings.values.channels.some(
+                      (c) => c.id === channel.id && c.kind === channel.kind,
+                    )}
+                    configured={credentials.some(
+                      (c) =>
+                        c.id === channel.id &&
+                        c.kind === channel.kind &&
+                        c.configured,
+                    )}
+                    onChange={(next) =>
+                      patch({
+                        channels: draft.channels.map((c) =>
+                          c.id === next.id ? next : c,
+                        ),
+                      })
+                    }
+                    onRemove={() => patch(withoutChannel(draft, channel.id))}
+                    onCredentialsSaved={() => credentialsSaved(channel)}
+                    onCredentialsChanged={() => void refresh()}
+                  />
+                </SettingsPanel>
+              ))}
+            </SelectedEditor>
+          ) : (
+            <SettingsCard>
+              <SettingsRow
+                label="还没有通知渠道"
+                hint="在上方选择平台并添加渠道，添加后会在这里打开编辑区。"
               />
-            </SettingsPanel>
-          ))}
+            </SettingsCard>
+          )}
           {/* Refresh ordinary inputs without unmounting credential drafts. */}
           <SettingsSection
             key={`defaults:${formKey}`}

@@ -127,10 +127,15 @@ describe("native settings drafts", () => {
     expect(
       renderer.root.findAllByProps({ accessibilityLabel: "示例回复" }),
     ).toHaveLength(0);
-    await pressAction("展开填写帮助");
+    await pressAction("展开规则说明");
     expect(
       renderer.root.findByProps({ label: "Pattern 如何填写" }).props.hint,
     ).toContain("组 1");
+    expect(
+      renderer.root.findAllByProps({ actionLabel: "添加工单号示例" }),
+    ).toHaveLength(0);
+    await pressAction("收起规则说明");
+    await pressAction("展开填写帮助");
     expect(
       renderer.root.findByProps({ label: "{{summary}}" }).props.hint,
     ).toContain("不是 AI 回复");
@@ -286,14 +291,14 @@ describe("native settings drafts", () => {
   });
   it("shows one section at a time on compact layouts and keeps save available", async () => {
     await render();
-    expect(isVisible(renderer.root.findByProps({ title: "渠道管理" }))).toBe(
+    expect(isVisible(renderer.root.findByProps({ title: "添加渠道" }))).toBe(
       true,
     );
     expect(isVisible(renderer.root.findByProps({ label: "自动继续" }))).toBe(
       false,
     );
     await selectSection("recovery");
-    expect(isVisible(renderer.root.findByProps({ title: "渠道管理" }))).toBe(
+    expect(isVisible(renderer.root.findByProps({ title: "添加渠道" }))).toBe(
       false,
     );
     expect(isVisible(renderer.root.findByProps({ label: "自动继续" }))).toBe(

@@ -158,7 +158,7 @@ export const ChannelEditor = forwardRef<
   }));
   const patch = (value: Partial<Channel>) => onChange({ ...channel, ...value });
   return (
-    <SettingsSection title={channel.name || names[channel.kind]}>
+    <SettingsSection title="渠道设置">
       <SettingsCard key={settingsKey}>
         <SettingsRow
           label={names[channel.kind]}
