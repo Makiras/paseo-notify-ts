@@ -116,7 +116,7 @@ try {
     JSON.parse(
       await readFile(join(directory, "settings", "notifier.json"), "utf8"),
     ).version,
-    6,
+    7,
   );
   const values = {
     ...current.values,
@@ -398,9 +398,20 @@ try {
     revision: ordinarySettings.revision,
     values: {
       ...ordinarySettings.values,
-      recovery: {
-        ...ordinarySettings.values.recovery,
-        review: { ...ordinarySettings.values.recovery.review, enabled: false },
+      recovery: { ...ordinarySettings.values.recovery, enabled: false },
+      recoveryOverrides: {
+        workspaces: {},
+        sessions: {
+          "long-session": {
+            ...ordinarySettings.values.recovery,
+            enabled: true,
+            prompt: "session-specific continuation",
+            review: {
+              ...ordinarySettings.values.recovery.review,
+              enabled: false,
+            },
+          },
+        },
       },
     },
   });
@@ -427,6 +438,7 @@ try {
           append: async () => {},
         },
         send: async (_text, options) => {
+          assert.equal(_text, "session-specific continuation");
           assert.equal(options.activeTurnBehavior, "steer");
           assert.ok(options.messageId);
           longSubmitted = true;

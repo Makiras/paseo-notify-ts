@@ -1,3 +1,4 @@
+import { configSchema } from "./config";
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
@@ -38,6 +39,16 @@ export const deleteSessionRpc = defineRpc({
   name: "notifier.sessions.delete",
   input: z.object({ token: z.string().uuid(), id: sessionId }),
   output: z.object({ ok: z.boolean(), message: z.string() }),
+});
+
+export const prepareSessionConfigCleanupRpc = defineRpc({
+  name: "notifier.sessions.prepare-config-cleanup",
+  input: z.object({ ids: z.array(sessionId).min(1).max(20) }),
+  output: z.object({
+    revision: z.string(),
+    config: configSchema,
+    changed: z.boolean(),
+  }),
 });
 
 export function sessionStatus(

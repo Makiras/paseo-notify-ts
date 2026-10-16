@@ -1,3 +1,4 @@
+import { defaultConfig } from "../shared/config";
 import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,16 +7,21 @@ import { SessionCleanup } from "../client/sessions";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
+  cleanup: vi.fn(),
+  save: vi.fn(),
   remove: vi.fn(),
   list: vi.fn(),
 }));
 vi.mock("@getpaseo/plugin/client", () => ({
+  useSettings: () => ({ save: mocks.save }),
   useRpc: (rpc: { name: string }) =>
-    rpc.name.endsWith("prepare-delete")
-      ? mocks.prepare
-      : rpc.name.endsWith(".delete")
-        ? mocks.remove
-        : mocks.list,
+    rpc.name.endsWith("prepare-config-cleanup")
+      ? mocks.cleanup
+      : rpc.name.endsWith("prepare-delete")
+        ? mocks.prepare
+        : rpc.name.endsWith(".delete")
+          ? mocks.remove
+          : mocks.list,
 }));
 vi.mock("react-native", () => ({
   View: "View",
@@ -60,6 +66,12 @@ beforeEach(() => {
     globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   vi.resetAllMocks();
+  mocks.cleanup.mockResolvedValue({
+    changed: false,
+    revision: "r1",
+    config: defaultConfig(),
+  });
+  mocks.save.mockResolvedValue(true);
   mocks.prepare.mockResolvedValue({ token: id, sessions: [session] });
   mocks.remove.mockResolvedValue({ ok: true, message: "已删除" });
   mocks.list.mockResolvedValue({
@@ -80,6 +92,33 @@ const action = (label: string) =>
     renderer.root.findByProps({ actionLabel: label }).props.onPress(),
   );
 describe("session cleanup confirmation", () => {
+  it("retries only cleanup after a confirmed deletion and configuration save failure", async () => {
+    const onDone = vi.fn();
+    mocks.cleanup.mockResolvedValue({
+      changed: true,
+      revision: "new",
+      config: defaultConfig(),
+    });
+    mocks.save.mockResolvedValue(false);
+    await act(async () => {
+      renderer = create(
+        createElement(SessionDelete, { ids: [id], theme: props.theme, onDone }),
+      );
+    });
+    await press("删除会话");
+    await press("确认删除 1 个会话");
+    expect(mocks.remove).toHaveBeenCalledOnce();
+    expect(mocks.save).toHaveBeenCalledTimes(3);
+    expect(onDone).not.toHaveBeenCalled();
+    expect(
+      renderer.root.findByProps({ label: "删除结果" }).props.hint,
+    ).toContain("配置待清理");
+    mocks.save.mockResolvedValue(true);
+    await action("重试清理");
+    expect(mocks.remove).toHaveBeenCalledOnce();
+    expect(onDone).toHaveBeenCalledWith([id]);
+  });
+
   it("requires a second explicit red action and allows cancellation without deletion", async () => {
     await act(async () => {
       renderer = create(

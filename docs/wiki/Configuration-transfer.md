@@ -40,3 +40,5 @@
 格式错误时检查是否复制完整 JSON。不能直接导入含本地绑定的普通设置文件。单次导入有约 1 MiB 的字符数量限制。
 
 相关：[设置与凭据](Settings-and-credentials.md) · [配置参考](Configuration-reference.md) · [存储与可靠性](Storage-and-reliability.md)
+
+自动继续只同步 Host 默认参数；工作区、会话的恢复覆盖不导出。导入时保留目标 Host 已有的本地恢复覆盖，继续跟随 Host 的范围会使用导入后的默认值。

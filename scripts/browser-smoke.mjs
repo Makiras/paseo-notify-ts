@@ -110,7 +110,21 @@ async function checkBrowser(name) {
       settingsFile,
       JSON.stringify({
         version: 4,
-        values: { updates: { checkAutomatically: false } },
+        values: {
+          updates: { checkAutomatically: false },
+          routing: {
+            sessions: {
+              "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa": [],
+              "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb": [],
+            },
+          },
+          recoveryOverrides: {
+            sessions: {
+              "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa": { enabled: false },
+              "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb": { enabled: false },
+            },
+          },
+        },
       }),
     );
     // Synthetic records only: no provider runtime or user session is created.
@@ -396,7 +410,7 @@ async function checkBrowser(name) {
       page.getByRole("button", { name: "展开提取规则", exact: true }),
     ).toBeVisible();
     const persisted = JSON.parse(await readFile(settingsFile, "utf8"));
-    assert.equal(persisted.version, 6);
+    assert.equal(persisted.version, 7);
     assert.equal(persisted.values.notifications.template.title, title);
 
     // Check the previously broken save -> credentials -> immediately test flow.
@@ -613,6 +627,25 @@ async function checkBrowser(name) {
       { code: "ENOENT" },
     );
     assert.ok(await readFile(join(home, "agents", `${cleanupIds[1]}.json`)));
+    const cleanedSettings = JSON.parse(
+      await readFile(settingsFile, "utf8"),
+    ).values;
+    assert.equal(
+      Object.hasOwn(cleanedSettings.routing.sessions, cleanupIds[0]),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(cleanedSettings.recoveryOverrides.sessions, cleanupIds[0]),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(cleanedSettings.routing.sessions, cleanupIds[1]),
+      true,
+    );
+    assert.equal(
+      Object.hasOwn(cleanedSettings.recoveryOverrides.sessions, cleanupIds[1]),
+      true,
+    );
     await page.getByRole("button", { name: "刷新会话", exact: true }).click();
     await expect(firstCleanup).toHaveCount(0);
     await expect(secondCleanup).toBeVisible();
@@ -643,6 +676,25 @@ async function checkBrowser(name) {
     });
     await page.getByRole("button", { name: "取消删除", exact: true }).click();
     assert.ok(await readFile(join(home, "agents", `${cleanupIds[1]}.json`)));
+    const retainedSettings = JSON.parse(
+      await readFile(settingsFile, "utf8"),
+    ).values;
+    assert.equal(
+      Object.hasOwn(retainedSettings.routing.sessions, cleanupIds[0]),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(retainedSettings.recoveryOverrides.sessions, cleanupIds[0]),
+      false,
+    );
+    assert.equal(
+      Object.hasOwn(retainedSettings.routing.sessions, cleanupIds[1]),
+      true,
+    );
+    assert.equal(
+      Object.hasOwn(retainedSettings.recoveryOverrides.sessions, cleanupIds[1]),
+      true,
+    );
     assert.deepEqual(errors, [], "Browser errors must fail the smoke test");
     console.log(
       `${name}: compact template layout, folding/drafts/error recovery, save/reload, Feishu card selection/preview, ntfy save/test, separate settings entries and confirmed session deletion passed`,

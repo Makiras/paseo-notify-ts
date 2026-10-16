@@ -1,3 +1,4 @@
+import { resolveRecovery } from "../shared/recovery";
 import { randomUUID } from "node:crypto";
 import type {
   PluginHookAgent,
@@ -122,7 +123,9 @@ export class Runtime {
         }
         if (
           r.phase === "waiting" &&
-          this.now() >= r.startedAt + config.recovery.maxElapsedMinutes * 60_000
+          this.now() >=
+            r.startedAt +
+              resolveRecovery(config, r).value.maxElapsedMinutes * 60_000
         ) {
           r.phase = "exhausted";
           r.dueAt = null;
@@ -208,16 +211,16 @@ export class Runtime {
       });
   }
   async configure(config: Config): Promise<void> {
-    const recoveryChanged =
-      JSON.stringify(this.config.recovery) !== JSON.stringify(config.recovery);
-    if (recoveryChanged || !config.enabled)
-      for (const id of new Set(
-        this.storage.state
-          .read()
-          .recoveries.filter(active)
-          .map((r) => r.agentId),
-      ))
-        this.bump(id);
+    // Only invalidate work whose effective policy changed. Editing another
+    // session or a shadowed Host default must not cancel this session's retry.
+    for (const r of this.storage.state.read().recoveries.filter(active)) {
+      if (
+        !config.enabled ||
+        JSON.stringify(resolveRecovery(this.config, r).value) !==
+          JSON.stringify(resolveRecovery(config, r).value)
+      )
+        this.bump(r.agentId);
+    }
     this.config = structuredClone(config);
     for (const [id, controller] of this.deliveryBusy) {
       if (
@@ -228,18 +231,16 @@ export class Runtime {
     }
     await this.storage.state.update((state) => {
       for (const r of state.recoveries) {
+        const policy = resolveRecovery(config, r).value;
         const allowed =
           r.failure === "network"
-            ? config.recovery.network
+            ? policy.network
             : r.failure === "overloaded"
-              ? config.recovery.overloaded
+              ? policy.overloaded
               : r.failure === "rate_limited"
-                ? config.recovery.rateLimited
+                ? policy.rateLimited
                 : false;
-        if (
-          active(r) &&
-          (!config.enabled || !config.recovery.enabled || !allowed)
-        ) {
+        if (active(r) && (!config.enabled || !policy.enabled || !allowed)) {
           this.bump(r.agentId);
           r.phase = "canceled";
           r.dueAt = null;
@@ -562,6 +563,7 @@ export class Runtime {
                 reviews: [],
               };
           if (!continuation) state.recoveries.push(r);
+          r.workspaceId = event.agent.workspaceId;
           r.failure = failure.kind;
           r.awaitingStart = false;
           r.turnId = event.turnId;
@@ -572,7 +574,10 @@ export class Runtime {
             attempts: r.attempts,
             startedAt: r.startedAt,
             now,
-            config: this.config,
+            config: {
+              ...this.config,
+              recovery: resolveRecovery(this.config, base).value,
+            },
             random: this.random(),
           });
           if ("dueAt" in next) {
@@ -864,14 +869,15 @@ export class Runtime {
       r.phase !== "waiting" ||
       !this.port ||
       !this.config.enabled ||
-      !this.config.recovery.enabled ||
+      !resolveRecovery(this.config, r).value.enabled ||
       this.closed
     )
       return;
     if (
-      r.attempts >= this.config.recovery.maxAttempts ||
+      r.attempts >= resolveRecovery(this.config, r).value.maxAttempts ||
       this.now() >=
-        r.startedAt + this.config.recovery.maxElapsedMinutes * 60_000
+        r.startedAt +
+          resolveRecovery(this.config, r).value.maxElapsedMinutes * 60_000
     ) {
       await this.stopRecovery(id, "自动恢复预算已用尽", "exhausted");
       return;
@@ -893,7 +899,7 @@ export class Runtime {
       return;
     }
     if (!(await this.checkRecoveryState(id, view))) return;
-    if (this.config.recovery.review.enabled) {
+    if (resolveRecovery(this.config, r).value.review.enabled) {
       if (this.reviewControllers.size >= 2) {
         await this.storage.state.update((state) => {
           const row = state.recoveries.find((item) => item.id === id)!;
@@ -946,12 +952,13 @@ export class Runtime {
     if (this.closed) return;
     if (
       !this.config.enabled ||
-      !this.config.recovery.enabled ||
+      !resolveRecovery(this.config, r).value.enabled ||
       !current ||
       !["waiting", "reviewing"].includes(current.phase) ||
-      current.attempts >= this.config.recovery.maxAttempts ||
+      current.attempts >= resolveRecovery(this.config, r).value.maxAttempts ||
       this.now() >=
-        r.startedAt + this.config.recovery.maxElapsedMinutes * 60_000 ||
+        r.startedAt +
+          resolveRecovery(this.config, r).value.maxElapsedMinutes * 60_000 ||
       this.generations.get(r.agentId) !== generation
     ) {
       await this.stopRecovery(id, "用户操作或配置变更，已取消发送");
@@ -973,7 +980,7 @@ export class Runtime {
     if (
       this.generations.get(r.agentId) !== generation ||
       !this.config.enabled ||
-      !this.config.recovery.enabled
+      !resolveRecovery(this.config, r).value.enabled
     ) {
       await this.storage.state.update((state) => {
         state.recoveries.find((item) => item.id === id)!.awaitingStart = false;
@@ -985,7 +992,11 @@ export class Runtime {
       return;
     }
     try {
-      await this.port.send(r.agentId, this.config.recovery.prompt, messageId);
+      await this.port.send(
+        r.agentId,
+        resolveRecovery(this.config, r).value.prompt,
+        messageId,
+      );
     } catch {
       await this.stopRecovery(
         id,
@@ -1073,7 +1084,9 @@ export class Runtime {
     items: readonly AgentTimelineItem[],
     generation: number | undefined,
   ): Promise<boolean> {
-    const config = structuredClone(this.config.recovery.review);
+    const config = structuredClone(
+      resolveRecovery(this.config, r).value.review,
+    );
     if (r.reviews.length >= config.maxReviews) {
       await this.stopRecovery(
         r.id,
@@ -1096,7 +1109,7 @@ export class Runtime {
     const signal = AbortSignal.any([controller.signal, this.controller.signal]);
     const remaining =
       r.startedAt +
-      this.config.recovery.maxElapsedMinutes * 60_000 -
+      resolveRecovery(this.config, r).value.maxElapsedMinutes * 60_000 -
       this.now();
     const timer = setTimeout(
       () => controller.abort(),
@@ -1154,7 +1167,7 @@ export class Runtime {
                 title: r.title,
                 failure: r.failure,
                 attempts: r.attempts,
-                continuation: this.config.recovery.prompt,
+                continuation: resolveRecovery(this.config, r).value.prompt,
                 items,
                 limit: config.contextCharacters,
               }),

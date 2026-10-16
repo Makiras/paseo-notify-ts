@@ -75,6 +75,8 @@ const harness = await build({
       check(registrations.some(r => r.id === "settings" && typeof r.Component === "function"), "Settings screen missing");
       check(registrations.some(r => r.id === "recovery" && typeof r.Component === "function"), "Recovery settings missing");
       check(registrations.some(r => r.id === "sessions" && typeof r.Component === "function"), "Cleanup settings missing");
+      check(registrations.some(r => r.id === "workspace-recovery" && typeof r.Component === "function"), "Workspace recovery missing");
+      check(registrations.some(r => r.id === "session-recovery" && typeof r.Component === "function"), "Session recovery missing");
       check(registrations.some(r => r.id === "workspace-routing"), "Workspace settings missing");
       cleanup();
       const api = evaluate(${JSON.stringify(templateBundle)})(requireHost).default();

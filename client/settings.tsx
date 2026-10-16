@@ -39,7 +39,7 @@ import {
   type CredentialEditorHandle,
 } from "./channel-editor";
 import { Activity } from "./activity";
-import { ReviewSettings } from "./review-settings";
+import { RecoverySettings } from "./recovery-settings";
 import { ChannelSelection } from "./channel-selection";
 import { ConfigTransfer } from "./transfer";
 import { withoutChannel } from "../shared/routing";
@@ -538,60 +538,13 @@ function Editor({
         <SettingsPanel active={section === "recovery"}>
           <SettingsSection key={`recovery:${formKey}`} title="自动恢复">
             <SettingsCard>
-              <SettingsSwitch
-                label="自动继续"
-                hint="遇到临时断网、请求过多或服务繁忙时，稍后继续原任务。安全拦截、额度用完或对话过长时，会通知你手动处理。"
-                value={draft.recovery.enabled}
-                onValueChange={(enabled) => recovery({ enabled })}
+              <SettingsRow
+                label="Host 默认设置"
+                hint="工作区和会话默认跟随这里；单独配置的范围使用自己的设置。"
               />
-              <SettingsSwitch
-                label="网络故障"
-                value={draft.recovery.network}
-                onValueChange={(network) => recovery({ network })}
-              />
-              <SettingsSwitch
-                label="服务繁忙 / 容量不足"
-                value={draft.recovery.overloaded}
-                onValueChange={(overloaded) => recovery({ overloaded })}
-              />
-              <SettingsSwitch
-                label="请求限流"
-                value={draft.recovery.rateLimited}
-                onValueChange={(rateLimited) => recovery({ rateLimited })}
-              />
-              <SettingsInput
-                label="最大重试次数"
-                initialValue={String(draft.recovery.maxAttempts)}
-                onChangeText={(v) => recovery({ maxAttempts: numeric(v) })}
-              />
-              <SettingsInput
-                label="恢复时间上限（分钟）"
-                initialValue={String(draft.recovery.maxElapsedMinutes)}
-                onChangeText={(v) =>
-                  recovery({ maxElapsedMinutes: numeric(v) })
-                }
-              />
-              <SettingsInput
-                label="初始等待（秒）"
-                initialValue={String(draft.recovery.baseDelaySeconds)}
-                onChangeText={(v) => recovery({ baseDelaySeconds: numeric(v) })}
-              />
-              <SettingsInput
-                label="两次重试最多间隔（秒）"
-                hint="连续失败时逐渐延长等待。如果服务要求等得更久，会按要求等待；超过上面的恢复时间上限后停止。"
-                initialValue={String(draft.recovery.maxDelaySeconds)}
-                onChangeText={(v) => recovery({ maxDelaySeconds: numeric(v) })}
-              />
-              <SettingsInput
-                label="继续指令"
-                hint="恢复任务时发给 AI 的消息。通常保留默认内容即可。"
-                initialValue={draft.recovery.prompt}
-                onChangeText={(prompt) => recovery({ prompt })}
-              />
-              <ReviewSettings
-                recoveryEnabled={draft.recovery.enabled}
-                value={draft.recovery.review}
-                onChange={(review) => recovery({ review })}
+              <RecoverySettings
+                value={draft.recovery}
+                onChange={(value) => recovery(value)}
               />
             </SettingsCard>
           </SettingsSection>

@@ -143,6 +143,27 @@ export const recoverySchema = z
     path: ["maxDelaySeconds"],
   });
 
+export type RecoveryConfig = z.infer<typeof recoverySchema>;
+const recoveryScopes = (limit: number) =>
+  z
+    .unknown()
+    .superRefine((value, ctx) => {
+      if (
+        value &&
+        typeof value === "object" &&
+        Object.keys(value).some((key) =>
+          ["__proto__", "constructor", "prototype"].includes(key),
+        )
+      )
+        ctx.addIssue({ code: "custom", message: "无效的自动继续范围" });
+    })
+    .pipe(z.record(scopeIdSchema, recoverySchema))
+    .refine((v) => Object.keys(v).length <= limit, "自动继续配置过多");
+export const recoveryOverridesSchema = z.object({
+  workspaces: recoveryScopes(1000).default({}),
+  sessions: recoveryScopes(5000).default({}),
+});
+
 export const configSchema = z
   .object({
     enabled: z.boolean().default(true),
@@ -151,6 +172,7 @@ export const configSchema = z
       .object({ checkAutomatically: z.boolean().default(true) })
       .prefault({}),
     recovery: recoverySchema.prefault({}),
+    recoveryOverrides: recoveryOverridesSchema.prefault({}),
     notifications: z
       .object({
         includePreview: z.boolean().default(false),
@@ -188,7 +210,7 @@ export const configSchema = z
 export type Config = z.infer<typeof configSchema>;
 export const defaultConfig = (): Config => configSchema.parse({});
 export function migrateSettings(values: unknown, fromVersion: number): Config {
-  if (![1, 2, 3, 4, 5].includes(fromVersion))
+  if (![1, 2, 3, 4, 5, 6].includes(fromVersion))
     throw new Error("不支持的设置格式");
   const config = configSchema.parse(values);
   // Preserve the previous fan-out for existing installations only.
@@ -198,7 +220,7 @@ export function migrateSettings(values: unknown, fromVersion: number): Config {
 export const preferences = defineSettings({
   id: "notifier",
   scope: "host",
-  version: 6,
+  version: 7,
   schema: configSchema,
   migrate: migrateSettings,
 });

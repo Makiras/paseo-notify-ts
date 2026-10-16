@@ -97,6 +97,7 @@ export function planImport(
   const config = configSchema.parse({
     ...incoming.config,
     channels,
+    recoveryOverrides: current.recoveryOverrides,
     routing: {
       ...current.routing,
       host: incoming.config.routing.host.map((id) => mapped.get(id)!),

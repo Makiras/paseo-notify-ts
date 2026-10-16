@@ -2,6 +2,7 @@ import type {
   PluginButtonRegistration,
   PluginClientContext,
 } from "@getpaseo/plugin/client";
+import { createRecoveryPanel } from "./recovery-routing";
 import { createRoutingPanel } from "./routing";
 
 type Target = { id: string; workspaceId: string; agentId: string };
@@ -127,15 +128,16 @@ export function watchDirectory<T extends Page>(options: {
 
 export function installRoutingButtons(client: PluginClientContext) {
   const RoutingPanel = createRoutingPanel(client);
+  const RecoveryPanel = createRecoveryPanel(client);
   const registrations = new Map<
     string,
-    { target: Target; button: PluginButtonRegistration }
+    { target: Target; buttons: PluginButtonRegistration[] }
   >();
   function render(targets: Map<string, Target>) {
     for (const [key, item] of registrations) {
       const next = targets.get(item.target.id);
       if (!next || next.workspaceId !== item.target.workspaceId) {
-        item.button.remove();
+        for (const button of item.buttons) button.remove();
         registrations.delete(key);
       }
     }
@@ -155,7 +157,18 @@ export function installRoutingButtons(client: PluginClientContext) {
           behavior: { kind: "popover", Content: RoutingPanel },
         },
       });
-      registrations.set(key, { target, button: registration });
+      const recovery = client.addComposerPill({
+        id: "automatic-recovery",
+        workspaceId: target.workspaceId,
+        agentId: target.agentId,
+        button: {
+          title: "会话自动继续设置",
+          label: "自动继续",
+          icon: "RefreshCw",
+          behavior: { kind: "popover", Content: RecoveryPanel },
+        },
+      });
+      registrations.set(key, { target, buttons: [registration, recovery] });
     }
   }
   const agentTarget = (agent: {
@@ -194,7 +207,8 @@ export function installRoutingButtons(client: PluginClientContext) {
     apply: render,
   });
   return async () => {
-    for (const { button } of registrations.values()) button.remove();
+    for (const { buttons } of registrations.values())
+      for (const button of buttons) button.remove();
     registrations.clear();
     await stopAgents();
   };

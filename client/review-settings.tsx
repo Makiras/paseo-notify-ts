@@ -3,10 +3,12 @@ import type { ReviewConfig } from "../shared/config";
 
 export function ReviewSettings({
   recoveryEnabled,
+  disabled = false,
   value,
   onChange,
 }: {
   recoveryEnabled: boolean;
+  disabled?: boolean;
   value: ReviewConfig;
   onChange(value: ReviewConfig): void;
 }) {
@@ -18,9 +20,9 @@ export function ReviewSettings({
       <SettingsSwitch
         label="重试前由 AI 复核"
         value={value.enabled}
-        disabled={!recoveryEnabled}
+        disabled={disabled || !recoveryEnabled}
         onValueChange={(enabled) => {
-          if (recoveryEnabled) patch({ enabled });
+          if (!disabled && recoveryEnabled) patch({ enabled });
         }}
         hint={
           recoveryEnabled
@@ -31,22 +33,26 @@ export function ReviewSettings({
       {value.enabled && (
         <>
           <SettingsInput
+            disabled={disabled}
             label="复核提供方 / 模型"
             initialValue={value.provider}
             onChangeText={(provider) => patch({ provider })}
             hint="留空使用原会话的 AI。也可填写 codex、claude、opencode，或使用“提供方/模型名”指定模型。"
           />
           <SettingsInput
+            disabled={disabled}
             label="单次复核超时（秒）"
             initialValue={String(value.timeoutSeconds)}
             onChangeText={(v) => patch({ timeoutSeconds: number(v) })}
           />
           <SettingsInput
+            disabled={disabled}
             label="每个恢复计划最多复核次数"
             initialValue={String(value.maxReviews)}
             onChangeText={(v) => patch({ maxReviews: number(v) })}
           />
           <SettingsInput
+            disabled={disabled}
             label="会话摘录字符上限"
             initialValue={String(value.contextCharacters)}
             onChangeText={(v) => patch({ contextCharacters: number(v) })}

@@ -98,6 +98,12 @@ export function ScheduleSelection({
               disabled={disabled}
               onValueChange={setSelected}
             />
+            {!schedule && !loading && !error && (
+              <SettingsRow
+                label="此任务不在当前列表中"
+                hint="若已删除此任务，可打开下方“跟随上级”并保存，移除旧绑定。暂停或执行结束的任务无需清理；读取失败不会自动删除绑定。"
+              />
+            )}
             {schedule && (
               <SettingsRow
                 label="执行计划"

@@ -13,15 +13,18 @@ import { config } from "./fixtures";
 const host = vi.hoisted(() => ({
   settings: undefined as unknown,
   prepareDelete: vi.fn(),
+  cleanup: vi.fn(),
   deleteSession: vi.fn(),
   labels: {} as Record<string, string>,
 }));
 vi.mock("@getpaseo/plugin/client", () => ({
   useSettings: () => host.settings,
   useRpc: (rpc: { name: string }) =>
-    rpc.name.endsWith("prepare-delete")
-      ? host.prepareDelete
-      : host.deleteSession,
+    rpc.name.endsWith("prepare-config-cleanup")
+      ? host.cleanup
+      : rpc.name.endsWith("prepare-delete")
+        ? host.prepareDelete
+        : host.deleteSession,
   useAgent: (id: string, select: (agent: unknown) => unknown) =>
     id ? select({ labels: host.labels }) : null,
 }));
@@ -67,6 +70,11 @@ beforeEach(() => {
   host.labels = {};
   host.prepareDelete.mockReset();
   host.deleteSession.mockReset();
+  host.cleanup.mockResolvedValue({
+    changed: false,
+    revision: "r1",
+    config: state.values,
+  });
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());

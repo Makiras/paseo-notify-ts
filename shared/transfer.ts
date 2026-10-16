@@ -26,6 +26,8 @@ export const transferSchema = z
         !Object.keys(v.routing.schedules).length &&
         !Object.keys(v.routing.workspaces).length &&
         !Object.keys(v.routing.sessions).length &&
+        !Object.keys(v.recoveryOverrides.workspaces).length &&
+        !Object.keys(v.recoveryOverrides.sessions).length &&
         v.channels.every((c) => !c.workspaceIds.length),
       "跨 Host 配置不能包含本地定时任务 / Workspace / Session 绑定或工作区过滤",
     ),
@@ -62,6 +64,7 @@ export function portableConfig(config: Config): Config {
   next.routing.schedules = {};
   next.routing.workspaces = {};
   next.routing.sessions = {};
+  next.recoveryOverrides = { workspaces: {}, sessions: {} };
   for (const channel of next.channels) channel.workspaceIds = [];
   return next;
 }

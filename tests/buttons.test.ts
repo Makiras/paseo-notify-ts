@@ -71,7 +71,13 @@ describe("owned notification button directory", () => {
       addHeaderButton,
     } as unknown as PluginClientContext);
     await flush();
-    expect(addComposerPill).toHaveBeenCalledTimes(1);
+    expect(addComposerPill).toHaveBeenCalledTimes(2);
+    expect(
+      addComposerPill.mock.calls.map(
+        (call) =>
+          (call as unknown as [{ button: { label: string } }])[0].button.label,
+      ),
+    ).toEqual(["通知", "自动继续"]);
     expect(addHeaderButton).not.toHaveBeenCalled();
     expect(listWorkspaces).not.toHaveBeenCalled();
     agents.update({
@@ -81,14 +87,19 @@ describe("owned notification button directory", () => {
     expect(
       addComposerPill.mock.results[0]!.value.remove,
     ).toHaveBeenCalledOnce();
-    expect(addComposerPill).toHaveBeenCalledTimes(2);
+    expect(addComposerPill).toHaveBeenCalledTimes(4);
     agents.update({
       type: "agent_update",
       payload: { kind: "remove", agentId: "a" },
     });
     expect(
-      addComposerPill.mock.results[1]!.value.remove,
+      addComposerPill.mock.results[2]!.value.remove,
     ).toHaveBeenCalledOnce();
+    expect(
+      addComposerPill.mock.results.every(
+        (result) => result.value.remove.mock.calls.length === 1,
+      ),
+    ).toBe(true);
     await stop();
     expect(agents.subscription.release).toHaveBeenCalledOnce();
   });
@@ -135,7 +146,7 @@ describe("owned notification button directory", () => {
       addComposerPill.mock.calls
         .map((call) => (call as unknown as [{ agentId: string }])[0].agentId)
         .sort(),
-    ).toEqual(["a", "c"]);
+    ).toEqual(["a", "a", "c", "c"]);
     await stop();
   });
   it("releases a late bootstrap without registering controls after unload", async () => {

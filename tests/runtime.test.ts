@@ -92,6 +92,143 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it("enforces the session attempt budget across continuation failures", async () => {
+    const s = await setup();
+    s.c.recoveryOverrides.sessions[agent.id] = {
+      ...s.c.recovery,
+      maxAttempts: 1,
+    };
+    await s.r.configure(s.c);
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(1000);
+    const messageId = s.send.mock.calls[0]![2];
+    await s.r.turnStarted(agent.id, "retry");
+    s.setView({ idle: true, status: "error" });
+    await s.r.turnEnded({ ...event(undefined, messageId), turnId: "retry" });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(s.send).toHaveBeenCalledOnce();
+    expect(s.store.state.read().recoveries[0]!.reason).toContain(
+      "重试次数上限",
+    );
+  });
+
+  it("uses workspace delay, session prompt and review even when Host recovery is off", async () => {
+    const s = await setup();
+    const local = structuredClone(s.c.recovery);
+    s.c.recovery.enabled = false;
+    s.c.recoveryOverrides.workspaces[agent.workspaceId] = {
+      ...local,
+      baseDelaySeconds: 2,
+    };
+    await s.r.configure(s.c);
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(s.send).toHaveBeenCalledOnce();
+    await s.r.turnStarted(agent.id, "session-override");
+    s.setView({
+      idle: true,
+      status: "error",
+      items: event(undefined, "new-user").timeline,
+    });
+    s.c.recoveryOverrides.sessions[agent.id] = {
+      ...local,
+      prompt: "继续本会话",
+      review: {
+        ...local.review,
+        enabled: true,
+        provider: "claude",
+        maxReviews: 1,
+      },
+    };
+    await s.r.configure(s.c);
+    await s.r.turnEnded({
+      ...event(undefined, "new-user"),
+      turnId: "session-override",
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.review).toHaveBeenCalledOnce();
+    expect(s.review.mock.calls[0]![0].config.provider).toBe("claude");
+    expect(s.send.mock.calls.at(-1)![1]).toBe("继续本会话");
+  });
+
+  it("session off suppresses recovery and restoring inheritance applies to a new failed turn", async () => {
+    const s = await setup();
+    s.c.recoveryOverrides.sessions[agent.id] = {
+      ...s.c.recovery,
+      enabled: false,
+    };
+    await s.r.configure(s.c);
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(s.send).not.toHaveBeenCalled();
+    delete s.c.recoveryOverrides.sessions[agent.id];
+    await s.r.configure(s.c);
+    await s.r.turnStarted(agent.id, "next");
+    await s.r.turnEnded({ ...event(undefined, "next-user"), turnId: "next" });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledOnce();
+  });
+
+  it("changing another scope or shadowed Host policy does not cancel an in-flight preflight", async () => {
+    const s = await setup();
+    s.c.recoveryOverrides.sessions[agent.id] = structuredClone(s.c.recovery);
+    await s.r.configure(s.c);
+    let resolve!: (value: AgentView) => void;
+    s.inspect.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(800);
+    s.c.recovery.enabled = false;
+    s.c.recoveryOverrides.sessions.other = { ...s.c.recovery, enabled: false };
+    await s.r.configure(s.c);
+    resolve({
+      available: true,
+      idle: true,
+      status: "error",
+      pendingPermissions: 0,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(s.send).toHaveBeenCalledOnce();
+  });
+
+  it("turning off the effective workspace policy cancels waiting recovery", async () => {
+    const s = await setup();
+    await s.r.turnEnded(event());
+    s.c.recoveryOverrides.workspaces[agent.workspaceId] = {
+      ...s.c.recovery,
+      enabled: false,
+    };
+    await s.r.configure(s.c);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(s.send).not.toHaveBeenCalled();
+    expect(s.store.state.read().recoveries[0]!.phase).toBe("canceled");
+  });
+
+  it("applies a session failure filter before scheduling and retains the global plugin switch", async () => {
+    const s = await setup();
+    s.c.recoveryOverrides.sessions[agent.id] = {
+      ...s.c.recovery,
+      network: false,
+    };
+    await s.r.configure(s.c);
+    await s.r.turnEnded(event());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).not.toHaveBeenCalled();
+    s.c.enabled = false;
+    s.c.recoveryOverrides.sessions[agent.id]!.network = true;
+    await s.r.configure(s.c);
+    await s.r.turnStarted(agent.id, "off");
+    await s.r.turnEnded({ ...event(undefined, "off-user"), turnId: "off" });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).not.toHaveBeenCalled();
+  });
+
   it.each([
     "insufficient_quota",
     "content_policy_violation",

@@ -1,3 +1,4 @@
+import { createRecoveryPanel } from "./client/recovery-routing";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { createSettingsScreen } from "./client/settings";
 import { SessionCleanup } from "./client/sessions";
@@ -8,6 +9,35 @@ import { installRoutingButtons } from "./client/buttons";
 
 export default function contribute(client: PluginClientContext) {
   const RoutingPanel = createRoutingPanel(client);
+  const RecoveryPanel = createRecoveryPanel(client);
+  client.addWorkspacePanel({
+    id: "workspace-recovery",
+    title: "工作区自动继续设置",
+    icon: "RefreshCw",
+    context: "workspace",
+    Component: RecoveryPanel,
+  });
+  client.addWorkspacePanel({
+    id: "session-recovery",
+    title: "会话自动继续设置",
+    icon: "RefreshCw",
+    context: "agent",
+    Component: RecoveryPanel,
+  });
+  client.addCommandCenterItem({
+    id: "workspace-recovery",
+    title: "Notifier：工作区自动继续设置",
+    icon: "RefreshCw",
+    context: "workspace",
+    onSelect: ({ openPanel }) => openPanel("workspace-recovery"),
+  });
+  client.addCommandCenterItem({
+    id: "session-recovery",
+    title: "Notifier：会话自动继续设置",
+    icon: "RefreshCw",
+    context: "agent",
+    onSelect: ({ openPanel }) => openPanel("session-recovery"),
+  });
   const settings = createSettingsScreen("channels", [
     "channels",
     "schedules",

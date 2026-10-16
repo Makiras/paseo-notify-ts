@@ -1,3 +1,4 @@
+import { prepareSessionConfigCleanup } from "./server/session-config";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PaseoApi } from "./server/types";
@@ -26,6 +27,7 @@ import { listSchedules, resolveAgentSchedule } from "./server/schedules";
 import { Updates } from "./server/updates";
 import { Sessions } from "./server/sessions";
 import {
+  prepareSessionConfigCleanupRpc,
   listSessionsRpc,
   prepareDeleteSessionsRpc,
   deleteSessionRpc,
@@ -106,6 +108,9 @@ export default function contribute(server: PluginServerContext) {
       return null;
     return resolveAgentSchedule(paseo, agentId);
   }
+  server.handle(prepareSessionConfigCleanupRpc, (input, ctx) =>
+    prepareSessionConfigCleanup(ctx.paseo, input.ids, () => settings.read()),
+  );
   server.handle(listSessionsRpc, (input, ctx) =>
     sessions.list(ctx.paseo, input.cursor),
   );

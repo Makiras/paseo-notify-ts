@@ -1,5 +1,5 @@
 // Kept in sync by `npm run version:set`; checked by CI and releases.
-export const pluginVersion = "0.4.3";
+export const pluginVersion = "0.4.4";
 export const pluginRepository = "Makiras/paseo-notify-ts";
 export const pluginId = "paseo-notifier";
 

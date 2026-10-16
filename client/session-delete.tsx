@@ -1,12 +1,18 @@
+import { preferences } from "../shared/config";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
+import {
+  useRpc,
+  useSettings,
+  type PluginSurfaceProps,
+} from "@getpaseo/plugin/client";
 import {
   SettingsAction,
   SettingsCard,
   SettingsRow,
 } from "@getpaseo/plugin/client/ui";
 import {
+  prepareSessionConfigCleanupRpc,
   deleteSessionRpc,
   prepareDeleteSessionsRpc,
   sessionStatus,
@@ -69,6 +75,9 @@ export function SessionDelete({
   onDone?(deletedIds: string[]): void;
   onBusyChange?(busy: boolean): void;
 }) {
+  const settings = useSettings(preferences);
+  const prepareCleanup = useRpc(prepareSessionConfigCleanupRpc);
+  const [pendingCleanup, setPendingCleanup] = useState<string[]>([]);
   const prepare = useRpc(prepareDeleteSessionsRpc),
     remove = useRpc(deleteSessionRpc);
   const [plan, setPlan] = useState<{
@@ -95,7 +104,8 @@ export function SessionDelete({
     onBusyChange?.(value);
   };
   async function review() {
-    if (lock.current || disabled || !ids.length) return;
+    if (lock.current || disabled || !ids.length || pendingCleanup.length)
+      return;
     setWorking(true);
     setFeedback(null);
     try {
@@ -107,6 +117,42 @@ export function SessionDelete({
           error instanceof Error
             ? error.message
             : "无法读取待删除会话，请刷新重试",
+        );
+    } finally {
+      setWorking(false);
+    }
+  }
+  async function cleanup(deleted: string[]): Promise<boolean> {
+    if (!deleted.length) return true;
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const plan = await prepareCleanup({ ids: deleted });
+        if (
+          !plan.changed ||
+          (await settings.save(plan.config, plan.revision))
+        ) {
+          if (mounted.current) setPendingCleanup([]);
+          return true;
+        }
+      }
+    } catch {
+      /* Deletion succeeded; only configuration cleanup is pending. */
+    }
+    if (mounted.current) setPendingCleanup(deleted);
+    return false;
+  }
+  async function retryCleanup() {
+    if (lock.current || !pendingCleanup.length) return;
+    setWorking(true);
+    try {
+      if (await cleanup(pendingCleanup)) {
+        if (mounted.current) {
+          setFeedback("会话配置已清理");
+          onDone?.(pendingCleanup);
+        }
+      } else if (mounted.current)
+        setFeedback(
+          "会话已删除，配置仍待清理。请检查连接后重试清理；不会再次删除会话。",
         );
     } finally {
       setWorking(false);
@@ -129,12 +175,13 @@ export function SessionDelete({
           failures.push(`${session.title}：无法确认删除结果，请刷新列表检查`);
         }
       }
+      const cleaned = await cleanup(deleted);
       if (mounted.current) {
         setPlan(null);
         setFeedback(
-          `已删除 ${deleted.length} 个会话。${failures.length ? `\n${failures.join("\n")}` : ""}`,
+          `已删除 ${deleted.length} 个会话。${cleaned ? "" : "配置待清理，请点击重试清理；不会再次删除会话。"}${failures.length ? `\n${failures.join("\n")}` : ""}`,
         );
-        onDone?.(deleted);
+        if (cleaned) onDone?.(deleted);
       }
     } finally {
       setWorking(false);
@@ -184,8 +231,18 @@ export function SessionDelete({
                 ? `删除选中的 ${ids.length} 个会话`
                 : "删除会话"
           }
-          disabled={busy || disabled || !ids.length}
+          disabled={
+            busy || disabled || !ids.length || pendingCleanup.length > 0
+          }
           onPress={() => void review()}
+        />
+      )}
+      {pendingCleanup.length > 0 && (
+        <SettingsAction
+          label="已删除会话的配置待清理"
+          actionLabel="重试清理"
+          disabled={busy}
+          onPress={() => void retryCleanup()}
         />
       )}
       {feedback && <SettingsRow label="删除结果" hint={feedback} />}
