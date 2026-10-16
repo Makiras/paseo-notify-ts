@@ -12,14 +12,24 @@ import { config } from "./fixtures";
 
 const host = vi.hoisted(() => ({
   settings: undefined as unknown,
+  prepareDelete: vi.fn(),
+  deleteSession: vi.fn(),
   labels: {} as Record<string, string>,
 }));
 vi.mock("@getpaseo/plugin/client", () => ({
   useSettings: () => host.settings,
+  useRpc: (rpc: { name: string }) =>
+    rpc.name.endsWith("prepare-delete")
+      ? host.prepareDelete
+      : host.deleteSession,
   useAgent: (id: string, select: (agent: unknown) => unknown) =>
     id ? select({ labels: host.labels }) : null,
 }));
-vi.mock("react-native", () => ({ View: "View" }));
+vi.mock("react-native", () => ({
+  View: "View",
+  Text: "Text",
+  Pressable: "Pressable",
+}));
 vi.mock("@getpaseo/plugin/client/ui", () =>
   Object.fromEntries(
     [
@@ -34,6 +44,7 @@ vi.mock("@getpaseo/plugin/client/ui", () =>
 let renderer: ReactTestRenderer;
 let state: Extract<SettingsState<typeof configSchema>, { status: "ready" }>;
 const props = {
+  theme: { colors: { statusDanger: "red" } },
   context: "agent",
   agentId: "s",
   workspaceId: "w",
@@ -54,6 +65,8 @@ beforeEach(() => {
   };
   host.settings = state;
   host.labels = {};
+  host.prepareDelete.mockReset();
+  host.deleteSession.mockReset();
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
@@ -66,6 +79,48 @@ async function render(
   });
 }
 describe("native notification selection", () => {
+  it("confirms deletion of the current session before closing its notification popover", async () => {
+    const close = vi.fn();
+    host.prepareDelete.mockResolvedValue({
+      token: "confirmation",
+      sessions: [
+        {
+          id: "s",
+          title: "当前会话",
+          provider: "codex",
+          status: "idle",
+          archivedAt: null,
+          cwd: "/test",
+        },
+      ],
+    });
+    host.deleteSession.mockResolvedValue({ ok: true, message: "会话已删除" });
+    await act(async () => {
+      renderer = create(createElement(RoutingPanel, { ...props, close }));
+    });
+    await act(async () =>
+      renderer.root
+        .findByProps({ accessibilityLabel: "删除会话" })
+        .props.onPress(),
+    );
+    expect(host.prepareDelete).toHaveBeenCalledWith({
+      ids: ["s"],
+      archivedOnly: false,
+    });
+    expect(host.deleteSession).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    await act(async () =>
+      renderer.root
+        .findByProps({ accessibilityLabel: "确认删除 1 个会话" })
+        .props.onPress(),
+    );
+    expect(host.deleteSession).toHaveBeenCalledWith({
+      token: "confirmation",
+      id: "s",
+    });
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it("opens the current workspace settings from the session popover and closes it without saving", async () => {
     const openPanel = vi.fn(),
       close = vi.fn();

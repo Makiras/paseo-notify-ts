@@ -318,11 +318,28 @@ describe("native settings drafts", () => {
       false,
     );
   });
+  it("opens the separate recovery entry with only recovery and activity navigation", async () => {
+    const screen = createSettingsScreen("recovery", ["recovery", "activity"]);
+    await act(async () => {
+      renderer = create(createElement(screen.Component, props));
+    });
+    const selector = renderer.root.findByProps({ label: "设置栏目" });
+    expect(selector.props.value).toBe("recovery");
+    expect(
+      selector.props.options.map((option: { value: string }) => option.value),
+    ).toEqual(["recovery", "activity"]);
+    expect(isVisible(renderer.root.findByProps({ label: "自动继续" }))).toBe(
+      true,
+    );
+    expect(isVisible(renderer.root.findByProps({ title: "添加渠道" }))).toBe(
+      false,
+    );
+  });
   it("uses tabs on wide layouts and preserves the selected section when narrowing", async () => {
     await render({ ...props, layout: { compact: false, platform: "web" } });
     expect(
       renderer.root.findAllByProps({ accessibilityRole: "tab" }),
-    ).toHaveLength(7);
+    ).toHaveLength(8);
     const tab = renderer.root.findByProps({
       accessibilityRole: "tab",
       accessibilityLabel: "自动恢复",

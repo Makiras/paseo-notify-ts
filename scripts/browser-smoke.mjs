@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, delimiter } from "node:path";
 import { promisify } from "node:util";
 import { chromium, firefox, expect as baseExpect } from "@playwright/test";
 
@@ -59,6 +59,7 @@ async function checkBrowser(name) {
   const receiverPort = await listen(receiver);
   const env = {
     ...process.env,
+    PATH: `${resolve("node_modules/.bin")}${delimiter}${process.env.PATH || ""}`,
     PASEO_HOME: home,
     PASEO_NOTIFIER_STATE_DIR: join(home, "notifier-state"),
   };
@@ -112,6 +113,27 @@ async function checkBrowser(name) {
         values: { updates: { checkAutomatically: false } },
       }),
     );
+    // Synthetic records only: no provider runtime or user session is created.
+    const cleanupIds = [
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    ];
+    await mkdir(join(home, "agents"), { recursive: true });
+    for (const [i, id] of cleanupIds.entries())
+      await writeFile(
+        join(home, "agents", `${id}.json`),
+        JSON.stringify({
+          id,
+          provider: "codex",
+          cwd: home,
+          title: `CI 删除测试 ${i + 1}`,
+          createdAt: "2026-10-16T00:00:00Z",
+          updatedAt: "2026-10-16T00:00:00Z",
+          lastStatus: "closed",
+          archivedAt: "2026-10-16T00:00:00Z",
+          labels: {},
+        }),
+      );
     await invoke("start", "--timeout", "45");
     await invoke("plugin", "install", join(temporary, "package"));
     await expect
@@ -146,12 +168,33 @@ async function checkBrowser(name) {
       if (message.type() === "error") errors.push(message.text());
     });
     await page.goto(`http://127.0.0.1:${port}`);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("button", { name: "Plugins", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Actions for paseo-notifier" })
-      .click();
-    await page.getByText("通知与自动恢复", { exact: true }).click();
+    const openPluginSettings = async (title) => {
+      const settingsButton = page.getByRole("button", {
+        name: "Settings",
+        exact: true,
+      });
+      await expect
+        .poll(
+          async () =>
+            (await settingsButton.isVisible()) ||
+            (await page
+              .getByRole("button", { name: "Plugins", exact: true })
+              .isVisible()),
+        )
+        .toBe(true);
+      if (await settingsButton.isVisible()) await settingsButton.click();
+      await page.getByRole("button", { name: "Plugins", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Actions for paseo-notifier" })
+        .click();
+      await expect(page.getByText("通知管理", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("自动恢复与继续", { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText("会话清理", { exact: true })).toBeVisible();
+      await page.getByText(title, { exact: true }).click();
+    };
+    await openPluginSettings("通知管理");
     await expect(page.getByText("全局设置", { exact: true })).toBeVisible();
     console.log(
       `${name}: installed archive, opened actual Paseo plugin settings`,
@@ -160,14 +203,16 @@ async function checkBrowser(name) {
       page.getByRole("tab", { name: label, exact: true }).click();
     for (const label of [
       "定时任务",
-      "自动恢复",
       "通知管理",
       "导入导出",
       "运行状态",
       "版本更新",
     ])
       await section(label);
-    await section("自动恢复");
+    await openPluginSettings("自动恢复与继续");
+    await expect(
+      page.getByRole("tab", { name: "通知渠道", exact: true }),
+    ).toHaveCount(0);
     const retries = page.getByLabel("最大重试次数", { exact: true });
     await retries.fill("1.5");
     await expect(
@@ -181,6 +226,9 @@ async function checkBrowser(name) {
       page.getByText("自动恢复 · 最大重试次数：最多20", { exact: true }),
     ).toBeVisible();
     await retries.fill("5");
+    await page.getByRole("button", { name: "保存设置", exact: true }).click();
+    await expect(page.getByText("设置已保存", { exact: true })).toBeVisible();
+    await openPluginSettings("通知管理");
     await section("通知管理");
     const preview = page.getByLabel("预览正文内容", { exact: true });
     await expect(page.getByLabel("标题模板", { exact: true })).toBeVisible();
@@ -536,9 +584,68 @@ async function checkBrowser(name) {
       .getByRole("button", { name: "收起提取规则", exact: true })
       .click();
     await page.getByLabel("标题模板", { exact: true }).scrollIntoViewIfNeeded();
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await openPluginSettings("会话清理");
+    const firstCleanup = page.getByTestId(`cleanup-session-${cleanupIds[0]}`);
+    const secondCleanup = page.getByTestId(`cleanup-session-${cleanupIds[1]}`);
+    await expect(firstCleanup).toBeVisible();
+    await expect(secondCleanup).toBeVisible();
+    await firstCleanup
+      .getByRole("switch", { name: "CI 删除测试 1", exact: true })
+      .click();
+    await page.getByRole("button", { name: "删除会话", exact: true }).click();
+    await expect(page.getByTestId("session-delete-confirmation")).toContainText(
+      cleanupIds[0],
+    );
+    await page.getByRole("button", { name: "取消删除", exact: true }).click();
+    assert.ok(await readFile(join(home, "agents", `${cleanupIds[0]}.json`)));
+    await page.getByRole("button", { name: "删除会话", exact: true }).click();
+    await page
+      .getByRole("button", { name: "确认删除 1 个会话", exact: true })
+      .click();
+    await expect(firstCleanup).toHaveCount(0);
+    await expect(secondCleanup).toBeVisible();
+    await expect(
+      page.getByText("已删除 1 个会话。", { exact: true }),
+    ).toBeVisible();
+    await assert.rejects(
+      readFile(join(home, "agents", `${cleanupIds[0]}.json`)),
+      { code: "ENOENT" },
+    );
+    assert.ok(await readFile(join(home, "agents", `${cleanupIds[1]}.json`)));
+    await page.getByRole("button", { name: "刷新会话", exact: true }).click();
+    await expect(firstCleanup).toHaveCount(0);
+    await expect(secondCleanup).toBeVisible();
+    await page.screenshot({
+      path: join(artifacts, "session-cleanup.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(secondCleanup).toBeVisible();
+    await secondCleanup
+      .getByRole("switch", { name: "CI 删除测试 2", exact: true })
+      .click();
+    await page.getByRole("button", { name: "删除会话", exact: true }).click();
+    const confirmButton = page.getByRole("button", {
+      name: "确认删除 1 个会话",
+      exact: true,
+    });
+    await confirmButton.scrollIntoViewIfNeeded();
+    const deleteBounds = await confirmButton.boundingBox();
+    assert.ok(
+      deleteBounds &&
+        deleteBounds.x >= 0 &&
+        deleteBounds.x + deleteBounds.width <= 390,
+    );
+    await page.screenshot({
+      path: join(artifacts, "session-delete-mobile.png"),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "取消删除", exact: true }).click();
+    assert.ok(await readFile(join(home, "agents", `${cleanupIds[1]}.json`)));
     assert.deepEqual(errors, [], "Browser errors must fail the smoke test");
     console.log(
-      `${name}: compact template layout, folding/drafts/error recovery, save/reload, Feishu card selection/preview and ntfy save/test passed`,
+      `${name}: compact template layout, folding/drafts/error recovery, save/reload, Feishu card selection/preview, ntfy save/test, separate settings entries and confirmed session deletion passed`,
     );
   } finally {
     if (page)

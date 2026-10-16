@@ -46,9 +46,11 @@ import { withoutChannel } from "../shared/routing";
 import { ScheduleSelection } from "./schedules";
 import { UpdatesPanel } from "./updates";
 import { MessageTemplates } from "./message-templates";
+import { SessionCleanup } from "./sessions";
 import { SelectedEditor } from "./selected-editor";
 import { settingsIssue } from "./validation";
 import {
+  settingsSections,
   createSettingsNavigation,
   SectionNavigation,
   SettingsPanel,
@@ -58,14 +60,24 @@ import {
 
 type SettingsProps = PluginSurfaceProps & {
   sectionNavigation?: SettingsNavigation;
+  visibleSections?: readonly SettingsSectionId[];
 };
 
-export function createSettingsScreen() {
-  const sectionNavigation = createSettingsNavigation();
+export function createSettingsScreen(
+  initial: SettingsSectionId = "channels",
+  visibleSections?: readonly SettingsSectionId[],
+) {
+  const sectionNavigation = createSettingsNavigation(initial);
   return {
     select: sectionNavigation.select,
     Component: function SettingsScreen(props: PluginSurfaceProps) {
-      return <Settings {...props} sectionNavigation={sectionNavigation} />;
+      return (
+        <Settings
+          {...props}
+          sectionNavigation={sectionNavigation}
+          visibleSections={visibleSections}
+        />
+      );
     },
   };
 }
@@ -115,6 +127,7 @@ function Editor({
   host,
   layout,
   sectionNavigation,
+  visibleSections,
 }: SettingsProps & {
   settings: Extract<SettingsState<typeof configSchema>, { status: "ready" }>;
 }) {
@@ -317,6 +330,11 @@ function Editor({
         onChange={sections.select}
         theme={theme}
         compact={layout.compact}
+        sections={
+          visibleSections
+            ? settingsSections.filter((s) => visibleSections.includes(s.value))
+            : settingsSections
+        }
       />
       <SettingsSection title="全局设置">
         <SettingsCard>
@@ -665,6 +683,14 @@ function Editor({
           refresh={() => void refresh()}
         />
       </SettingsPanel>
+      {section === "sessions" && (
+        <SessionCleanup
+          theme={theme}
+          host={host}
+          layout={layout}
+          navigation={navigation}
+        />
+      )}
       <SettingsPanel active={section === "updates"}>
         <UpdatesPanel
           automatic={draft.updates.checkAutomatically}

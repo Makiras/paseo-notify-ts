@@ -12,6 +12,7 @@ Paseo 原生通知与自动恢复插件。任务结束、失败或等待权限�
 - **定时任务绑定**：给 Paseo Schedule 固定接收渠道，跨次运行有效。
 - **自动恢复与可选 AI 复核**：控制重试次数和总时间，识别需要人工处理的中断。
 - **原生配置界面**：桌面、网页与移动端共用；渠道和凭据一键保存，会话内可进入工作区设置。
+- **会话清理**：会话内删除与归档列表选择删除，展示清单并二次确认。
 - **正式版本更新**：打开设置时检查 Release，手动通过 Host 终端安装；CI 验证、打包与发布。
 - **跨 Host 配置迁移**：通过剪贴板导入导出，可显式选择是否包含凭据。
 
@@ -27,6 +28,7 @@ Paseo 原生通知与自动恢复插件。任务结束、失败或等待权限�
 | 设置群组与继承     | [通知去向与继承](docs/wiki/Notification-routing.md) · [定时任务](docs/wiki/Scheduled-tasks.md)                                                            |
 | 保存与同步配置     | [设置与凭据](docs/wiki/Settings-and-credentials.md) · [跨 Host 导入导出](docs/wiki/Configuration-transfer.md)                                             |
 | 自动继续任务       | [自动恢复](docs/wiki/Automatic-recovery.md) · [AI 复核](docs/wiki/AI-review.md)                                                                           |
+| 清理归档会话       | [会话清理与删除](docs/wiki/Session-cleanup.md)                                                                                                            |
 | 查询状态或排错     | [运行状态与排错](docs/wiki/Activity-and-troubleshooting.md)                                                                                               |
 | 了解技术原理       | [架构](docs/wiki/Architecture.md) · [存储与可靠性](docs/wiki/Storage-and-reliability.md) · [宿主能力与限制](docs/wiki/Host-limitations.md)                |
 | 开发与集成         | [开发、CI 与文档维护](docs/wiki/Development-and-CI.md) · [配置参考](docs/wiki/Configuration-reference.md) · [Webhook 协议](docs/wiki/Webhook-protocol.md) |

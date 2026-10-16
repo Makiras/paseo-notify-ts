@@ -16,7 +16,7 @@ git:Makiras/paseo-notify-ts
 paseo plugin install git:Makiras/paseo-notify-ts
 ```
 
-开启 Paseo 的插件总开关和本插件的启用开关，随后进入「Paseo Notifier → 通知与自动恢复」。插件 ID 是 `paseo-notifier`，与仓库名 `paseo-notify-ts` 不同。
+开启 Paseo 的插件总开关和本插件的启用开关，随后进入「Paseo Notifier → 通知管理」。插件 ID 是 `paseo-notifier`，与仓库名 `paseo-notify-ts` 不同。
 
 运行环境需要 Node.js 22+。安装时宿主会检查兼容性；普通用户不需要为插件单独安装 npm 运行依赖。
 

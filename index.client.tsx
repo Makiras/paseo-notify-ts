@@ -1,5 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { createSettingsScreen } from "./client/settings";
+import { SessionCleanup } from "./client/sessions";
 import { RecoveryCard } from "./client/recovery-card";
 import { recoveryCardSchema } from "./shared/contracts";
 import { createRoutingPanel } from "./client/routing";
@@ -7,12 +8,50 @@ import { installRoutingButtons } from "./client/buttons";
 
 export default function contribute(client: PluginClientContext) {
   const RoutingPanel = createRoutingPanel(client);
-  const settings = createSettingsScreen();
+  const settings = createSettingsScreen("channels", [
+    "channels",
+    "schedules",
+    "notifications",
+    "transfer",
+    "activity",
+    "updates",
+    "sessions",
+  ]);
+  const recovery = createSettingsScreen("recovery", ["recovery", "activity"]);
   client.addSettingsScreen({
     id: "settings",
-    title: "通知与自动恢复",
+    title: "通知管理",
     icon: "BellRing",
     Component: settings.Component,
+  });
+  client.addSettingsScreen({
+    id: "recovery",
+    title: "自动恢复与继续",
+    icon: "RefreshCw",
+    Component: recovery.Component,
+  });
+  client.addSettingsScreen({
+    id: "sessions",
+    title: "会话清理",
+    icon: "Trash2",
+    Component: SessionCleanup,
+  });
+  client.addCommandCenterItem({
+    id: "open-recovery",
+    title: "Notifier：自动恢复与继续",
+    icon: "RefreshCw",
+    context: "global",
+    onSelect: ({ openSettings }) => {
+      recovery.select("recovery");
+      openSettings("recovery");
+    },
+  });
+  client.addCommandCenterItem({
+    id: "session-cleanup",
+    title: "Notifier：会话清理",
+    icon: "Trash2",
+    context: "global",
+    onSelect: ({ openSettings }) => openSettings("sessions"),
   });
   client.addTimelineRenderer({
     kind: "notifier-recovery",
@@ -22,7 +61,7 @@ export default function contribute(client: PluginClientContext) {
   });
   client.addCommandCenterItem({
     id: "open-settings",
-    title: "Notifier：通知与自动恢复",
+    title: "Notifier：通知管理",
     icon: "BellRing",
     context: "global",
     onSelect: ({ openSettings }) => {

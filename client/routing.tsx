@@ -17,6 +17,7 @@ import {
 import { preferences } from "../shared/config";
 import { routeLabel } from "../shared/routing";
 import { ChannelSelection } from "./channel-selection";
+import { SessionDelete } from "./session-delete";
 import { scheduleIdFromLabels } from "../shared/schedules";
 
 type RoutingProps =
@@ -158,6 +159,24 @@ export function RoutingPanel(
             onPress={props.onOpenWorkspace}
           />
         </SettingsCard>
+      )}
+      {context.agentId && (
+        <SessionDelete
+          key={context.agentId}
+          ids={[context.agentId]}
+          theme={props.theme}
+          disabled={busy || settings.saving}
+          onDone={(ids) => {
+            if (ids.includes(context.agentId!)) {
+              if ("close" in props) props.close();
+              else
+                props.navigation?.openWorkspace({
+                  workspaceId: props.workspaceId,
+                  serverId: props.host.id,
+                });
+            }
+          }}
+        />
       )}
     </View>
   );

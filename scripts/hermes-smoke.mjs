@@ -73,6 +73,8 @@ const harness = await build({
       });
       check(typeof cleanup === "function", "Client contribution failed");
       check(registrations.some(r => r.id === "settings" && typeof r.Component === "function"), "Settings screen missing");
+      check(registrations.some(r => r.id === "recovery" && typeof r.Component === "function"), "Recovery settings missing");
+      check(registrations.some(r => r.id === "sessions" && typeof r.Component === "function"), "Cleanup settings missing");
       check(registrations.some(r => r.id === "workspace-routing"), "Workspace settings missing");
       cleanup();
       const api = evaluate(${JSON.stringify(templateBundle)})(requireHost).default();

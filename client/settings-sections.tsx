@@ -11,13 +11,16 @@ export const settingsSections = [
   { value: "transfer", label: "导入导出" },
   { value: "activity", label: "运行状态" },
   { value: "updates", label: "版本更新" },
+  { value: "sessions", label: "会话清理" },
 ] as const;
 export type SettingsSectionId = (typeof settingsSections)[number]["value"];
 
 // One instance per client contribution (and therefore per Host installation).
 // Commands can select a section before opening the screen, or while it is open.
-export function createSettingsNavigation() {
-  let section: SettingsSectionId = "channels";
+export function createSettingsNavigation(
+  initial: SettingsSectionId = "channels",
+) {
+  let section: SettingsSectionId = initial;
   const listeners = new Set<() => void>();
   return {
     current: () => section,
@@ -40,11 +43,13 @@ export function SectionNavigation({
   onChange,
   theme,
   compact,
+  sections = settingsSections,
 }: {
   value: SettingsSectionId;
   onChange(value: SettingsSectionId): void;
   theme: PluginSurfaceProps["theme"];
   compact: boolean;
+  sections?: readonly (typeof settingsSections)[number][];
 }) {
   if (compact)
     return (
@@ -52,9 +57,9 @@ export function SectionNavigation({
         <SettingsSelect
           label="设置栏目"
           value={value}
-          options={[...settingsSections]}
+          options={[...sections]}
           onValueChange={(next) => {
-            const section = settingsSections.find((s) => s.value === next);
+            const section = sections.find((s) => s.value === next);
             if (section) onChange(section.value);
           }}
         />
@@ -62,7 +67,7 @@ export function SectionNavigation({
     );
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      {settingsSections.map((section) => {
+      {sections.map((section) => {
         const selected = section.value === value;
         return (
           <Pressable

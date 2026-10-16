@@ -24,6 +24,12 @@ import { exportConfiguration, planImport } from "./server/transfer";
 import { listSchedulesRpc } from "./shared/schedules";
 import { listSchedules, resolveAgentSchedule } from "./server/schedules";
 import { Updates } from "./server/updates";
+import { Sessions } from "./server/sessions";
+import {
+  listSessionsRpc,
+  prepareDeleteSessionsRpc,
+  deleteSessionRpc,
+} from "./shared/sessions";
 import {
   checkUpdatesRpc,
   installUpdateRpc,
@@ -34,6 +40,7 @@ export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(preferences);
   const paseoHome = process.env.PASEO_HOME ?? join(homedir(), ".paseo");
   const updates = new Updates(paseoHome);
+  const sessions = new Sessions(paseoHome);
   const directory =
     process.env.PASEO_NOTIFIER_STATE_DIR ?? join(paseoHome, "notifier");
   let stopped = false;
@@ -99,6 +106,17 @@ export default function contribute(server: PluginServerContext) {
       return null;
     return resolveAgentSchedule(paseo, agentId);
   }
+  server.handle(listSessionsRpc, (input, ctx) =>
+    sessions.list(ctx.paseo, input.cursor),
+  );
+  server.handle(prepareDeleteSessionsRpc, (input, ctx) =>
+    sessions.prepare(ctx.paseo, input.ids, input.archivedOnly),
+  );
+  server.handle(deleteSessionRpc, (input, ctx) =>
+    sessions.remove(ctx.paseo, input.token, input.id, () =>
+      run(ctx.paseo, (r) => r.cancelAgent(input.id, "正在删除会话")),
+    ),
+  );
   server.handle(listSchedulesRpc, () => listSchedules(paseoHome));
   server.handle(checkUpdatesRpc, async (input) => {
     const state = await settings.read();
