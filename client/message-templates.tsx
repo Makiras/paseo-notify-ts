@@ -135,6 +135,15 @@ export function MessageTemplates({
   const [selected, setSelected] = useState(0);
   const [kind, setKind] = useState<NoticeKind>("completed");
   const [sampleTitle, setSampleTitle] = useState(notificationExample().title);
+  const [sampleHostname, setSampleHostname] = useState(
+    notificationExample().hostname!,
+  );
+  const [sampleProject, setSampleProject] = useState(
+    notificationExample().projectName!,
+  );
+  const [sampleSession, setSampleSession] = useState(
+    notificationExample().sessionTitle!,
+  );
   const [sampleSummary, setSampleSummary] = useState(
     notificationExample().summary,
   );
@@ -173,7 +182,11 @@ export function MessageTemplates({
         ? renderNotification(
             {
               ...notificationExample(kind),
-              title: sampleTitle,
+              title: sampleTitle || sampleSession || "未命名会话",
+              hostname: sampleHostname,
+              projectName: sampleProject,
+              workspaceName: sampleTitle,
+              sessionTitle: sampleSession,
               summary: sampleSummary,
               preview: sampleReply,
             },
@@ -184,6 +197,9 @@ export function MessageTemplates({
       parsed,
       kind,
       sampleTitle,
+      sampleHostname,
+      sampleProject,
+      sampleSession,
       sampleSummary,
       sampleReply,
       notifications.includePreview,
@@ -353,9 +369,34 @@ export function MessageTemplates({
               collapseLabel="收起示例数据"
             >
               <Field
-                label="示例显示名称"
+                label="示例主机名"
+                hint="第 1 层：{{hostname}}"
+                value={sampleHostname}
+                onChange={setSampleHostname}
+                theme={theme}
+                maxLength={200}
+              />
+              <Field
+                label="示例项目分组名称"
+                hint="第 2 层：{{project_name}}"
+                value={sampleProject}
+                onChange={setSampleProject}
+                theme={theme}
+                maxLength={200}
+              />
+              <Field
+                label="示例侧栏工作区名称"
+                hint="第 3 层：{{workspace_name}}；有名称时 {{title}} 也使用它。"
                 value={sampleTitle}
                 onChange={setSampleTitle}
+                theme={theme}
+                maxLength={200}
+              />
+              <Field
+                label="示例聊天标签页标题"
+                hint="第 4 层：{{session_title}}"
+                value={sampleSession}
+                onChange={setSampleSession}
                 theme={theme}
                 maxLength={200}
               />
@@ -584,6 +625,14 @@ export function MessageTemplates({
         <SettingsRow
           label="占位符用法"
           hint="{{title}} 这样的标记会在发送时换成实际内容。例如“任务：{{title}}”会变成“任务：每日构建检查”。自己提取的工单号可写成 {{custom.ticket}}。"
+        />
+        <SettingsRow
+          label="名称有四个层级"
+          hint="主机 → 项目／仓库分组 → 侧栏工作区 → 聊天标签页。例如：dev-host → 示例仓库 → 每日构建检查 → 检查构建失败原因。你在侧栏给工作区改的名字属于第 3 层，聊天标题属于第 4 层。"
+        />
+        <SettingsRow
+          label="组合名称示例"
+          hint="{{hostname}} / {{project_name}} / {{workspace_name}} / {{session_title}}。只想显示侧栏名称可继续用 {{title}}；四个独立名称缺失时留空，不会拿其他层级的名称或 ID 代替。历史记录未保存的新字段也会留空。"
         />
         {templateFields.map(([name, description]) => (
           <SettingsRow key={name} label={`{{${name}}}`} hint={description} />

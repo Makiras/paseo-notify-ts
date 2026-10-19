@@ -107,7 +107,16 @@ export const retryDeliveryRpc = defineRpc({
   output: z.object({ ok: z.boolean() }),
 });
 
+export const notificationNamesSchema = z.object({
+  hostname: z.string().optional(),
+  projectName: z.string().optional(),
+  workspaceName: z.string().optional(),
+  sessionTitle: z.string().optional(),
+});
+export type NotificationNames = z.infer<typeof notificationNamesSchema>;
+
 export const notificationSchema = z.object({
+  ...notificationNamesSchema.shape,
   id: z.string(),
   kind: noticeKindSchema,
   agentId: z.string(),

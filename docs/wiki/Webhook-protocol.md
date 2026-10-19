@@ -16,6 +16,10 @@
   "scheduleId": null,
   "provider": "codex",
   "title": "检查项目",
+  "hostname": "dev-host",
+  "projectName": "示例仓库",
+  "workspaceName": "检查项目",
+  "sessionTitle": "检查构建失败原因",
   "summary": "任务已完成",
   "attempts": 0,
   "createdAt": 1792022400000,
@@ -28,6 +32,8 @@
 ```
 
 `text` 是当前[消息模板](Message-templates.md)渲染出的标题加正文，`message.title` 和 `message.body` 是分别渲染的内容。原有 `title`、`summary` 等事件字段保持原义，程序处理应使用这些字段。`preview` 仅在启用摘要并有内容时出现，即使模板中不引用它；`failure` 在相关失败事件出现。普通会话的 `scheduleId` 可为 `null` 或省略。`createdAt` 是 Unix 毫秒，`attempts` 是任务恢复次数，不是 HTTP 投递次数。
+
+`hostname`、`projectName`、`workspaceName`、`sessionTitle` 分别对应主机、项目分组、侧栏工作区和聊天标题，含义与[模板名称字段](Message-templates.md)一致。字段为可选，旧记录或读取不到相应名称时可能省略；接收端应兼容缺失字段。
 
 `kind` 可为 `completed`、`recovered`、`failed`、`blocked`、`permission`、`test`。`failure` 可为 `network`、`overloaded`、`rate_limited`、`quota_exhausted`、`context_exhausted`、`policy_blocked`、`unknown`。
 

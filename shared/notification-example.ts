@@ -12,6 +12,10 @@ export function notificationExample(
     scheduleId: "daily-check",
     provider: "codex",
     title: "每日构建检查",
+    hostname: "dev-host",
+    projectName: "示例仓库",
+    workspaceName: "每日构建检查",
+    sessionTitle: "检查构建失败原因",
     summary: "请在 Paseo 查看任务结果。",
     preview:
       "已处理工单 PROJ-123。\n结果：https://example.com/result/123\n全部检查通过。",

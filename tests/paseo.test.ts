@@ -17,7 +17,12 @@ function adapter(
   const refresh = vi.fn(async () => (snapshot ? { agent: snapshot } : null));
   const send = vi.fn(async () => {});
   const workspaceRefresh = vi.fn(
-    async (): Promise<{ name: string } | null> => null,
+    async (): Promise<{
+      name: string;
+      projectId?: string;
+      projectDisplayName?: string;
+      projectCustomName?: string | null;
+    } | null> => null,
   );
   const workspaceRef = vi.fn((_id: string) => ({ refresh: workspaceRefresh }));
   const paseo = {
@@ -35,6 +40,32 @@ function adapter(
 }
 
 describe("Paseo adapter", () => {
+  it("reads a renamed project independently from the workspace and chat title", async () => {
+    const s = adapter({ title: "排查加载队列" });
+    s.workspaceRefresh.mockResolvedValue({
+      name: "LSQ验证",
+      projectId: "project-a",
+      projectDisplayName: "旧项目名",
+      projectCustomName: "香山验证",
+    });
+    expect(await s.port.names!("agent-a", "workspace-a")).toEqual({
+      projectName: "香山验证",
+      workspaceName: "LSQ验证",
+      sessionTitle: "排查加载队列",
+    });
+    s.workspaceRefresh.mockResolvedValue({
+      name: "LSQ验证",
+      projectId: "project-a",
+      projectDisplayName: "project-a",
+    });
+    s.refresh.mockRejectedValue(new Error("agent deleted"));
+    expect(await s.port.names!("agent-a", "workspace-a")).toEqual({
+      projectName: undefined,
+      workspaceName: "LSQ验证",
+      sessionTitle: undefined,
+    });
+  });
+
   it("uses the renamed workspace's display name and refreshes it for later notifications", async () => {
     const s = adapter({
       title: "这个仓库是验证 Xiangshan，Kunminghu-v3 的仓库。",
@@ -42,13 +73,16 @@ describe("Paseo adapter", () => {
       pendingPermissions: [],
     });
     s.workspaceRefresh.mockResolvedValue({ name: "bpu-verify-kunminghu-v3" });
-    expect(await s.port.title!("agent-a", "workspace-a")).toBe(
-      "bpu-verify-kunminghu-v3",
-    );
+    expect(await s.port.names!("agent-a", "workspace-a")).toMatchObject({
+      workspaceName: "bpu-verify-kunminghu-v3",
+      sessionTitle: "这个仓库是验证 Xiangshan，Kunminghu-v3 的仓库。",
+    });
     expect(s.workspaceRef).toHaveBeenCalledWith("workspace-a");
     s.workspaceRefresh.mockResolvedValue({ name: "BPU验证" });
-    expect(await s.port.title!("agent-a", "workspace-a")).toBe("BPU验证");
-    expect(s.refresh).not.toHaveBeenCalled();
+    expect(await s.port.names!("agent-a", "workspace-a")).toMatchObject({
+      workspaceName: "BPU验证",
+    });
+    expect(s.refresh).toHaveBeenCalledTimes(2);
     expect(s.refetch).not.toHaveBeenCalled();
   });
   it("keeps workspaces sharing a directory separate by their IDs", async () => {
@@ -58,8 +92,12 @@ describe("Paseo adapter", () => {
         name: id === "lsq" ? "LSQ验证" : "ICache验证",
       })),
     }));
-    expect(await s.port.title!("agent-a", "lsq")).toBe("LSQ验证");
-    expect(await s.port.title!("agent-b", "icache")).toBe("ICache验证");
+    expect(await s.port.names!("agent-a", "lsq")).toMatchObject({
+      workspaceName: "LSQ验证",
+    });
+    expect(await s.port.names!("agent-b", "icache")).toMatchObject({
+      workspaceName: "ICache验证",
+    });
   });
   it("falls back to the chat title when workspace metadata cannot be read", async () => {
     const s = adapter({
@@ -68,7 +106,10 @@ describe("Paseo adapter", () => {
       pendingPermissions: [],
     });
     s.workspaceRefresh.mockRejectedValue(new Error("workspace unavailable"));
-    expect(await s.port.title!("a", "workspace-a")).toBe("会话名称");
+    expect(await s.port.names!("a", "workspace-a")).toMatchObject({
+      sessionTitle: "会话名称",
+      workspaceName: undefined,
+    });
   });
   it("reads a missing event title from current agent metadata, without history", async () => {
     const s = adapter({
@@ -76,7 +117,9 @@ describe("Paseo adapter", () => {
       status: "error",
       pendingPermissions: [],
     });
-    expect(await s.port.title!("a", null)).toBe("LSQ 验证");
+    expect(await s.port.names!("a", null)).toMatchObject({
+      sessionTitle: "LSQ 验证",
+    });
     expect(s.refresh).toHaveBeenCalledOnce();
     expect(s.refetch).not.toHaveBeenCalled();
   });

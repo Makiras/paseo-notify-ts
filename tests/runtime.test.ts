@@ -94,19 +94,55 @@ async function setup(reviewEnabled = false) {
 describe("callback recovery and durable notification flow", () => {
   it("uses the sidebar name instead of an existing chat title for permissions and completion", async () => {
     const s = await setup();
-    s.port.title = vi.fn(async () => "LSQ 验证");
+    s.port.names = vi.fn(async () => ({
+      workspaceName: "LSQ 验证",
+      projectName: "验证仓库",
+      sessionTitle: "检查加载队列",
+    }));
     await s.r.permission(agent, "title-permission");
     await s.r.turnEnded(event({ kind: "completed" }));
     const notices = s.store.state.read().deliveries.map((d) => d.notice);
     expect(notices).toHaveLength(2);
     expect(notices.map((n) => n.title)).toEqual(["LSQ 验证", "LSQ 验证"]);
     expect(notices.every((n) => n.agentId === agent.id)).toBe(true);
+    for (const notice of notices) {
+      expect(notice).toMatchObject({
+        workspaceName: "LSQ 验证",
+        projectName: "验证仓库",
+        sessionTitle: "检查加载队列",
+        hostname: expect.any(String),
+      });
+    }
   });
   it("uses the refreshed title in recovery records and future notices", async () => {
-    const s = await setup();
-    s.port.title = vi.fn(async () => "LSQ 验证");
+    const s = await setup(true);
+    s.review.mockResolvedValue({
+      decision: "stop",
+      reason: "requires inspection",
+    });
+    s.port.names = vi.fn(async () => ({
+      workspaceName: "LSQ 验证",
+      projectName: "验证仓库",
+      sessionTitle: "检查加载队列",
+    }));
     await s.r.turnEnded({ ...event(), agent: { ...agent, title: null } });
-    expect(s.store.state.read().recoveries[0]!.title).toBe("LSQ 验证");
+    expect(s.store.state.read().recoveries[0]).toMatchObject({
+      title: "LSQ 验证",
+      workspaceName: "LSQ 验证",
+      projectName: "验证仓库",
+      sessionTitle: "检查加载队列",
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    const notices = s.store.state.read().deliveries.map((d) => d.notice);
+    expect(notices.length).toBeGreaterThan(0);
+    expect(
+      notices.every(
+        (n) =>
+          n.workspaceName === "LSQ 验证" &&
+          n.projectName === "验证仓库" &&
+          n.sessionTitle === "检查加载队列",
+      ),
+    ).toBe(true);
   });
   it("enforces the session attempt budget across continuation failures", async () => {
     const s = await setup();

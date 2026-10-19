@@ -107,6 +107,52 @@ async function pressAction(actionLabel: string) {
   );
 }
 describe("native settings drafts", () => {
+  it("explains all four name layers and previews each editable name separately", async () => {
+    await render();
+    await selectSection("notifications");
+    await pressAction("展开填写帮助");
+    for (const name of [
+      "hostname",
+      "project_name",
+      "workspace_name",
+      "session_title",
+    ]) {
+      expect(
+        renderer.root.findByProps({ label: `{{${name}}}` }).props.hint,
+      ).toContain("层");
+    }
+    await pressAction("编辑示例数据");
+    const edit = async (label: string, value: string) =>
+      act(async () =>
+        renderer.root
+          .findByProps({ accessibilityLabel: label })
+          .props.onChangeText(value),
+      );
+    await edit(
+      "正文模板",
+      "{{hostname}} / {{project_name}} / {{workspace_name}} / {{session_title}} | {{title}}",
+    );
+    await edit("示例主机名", "local-host");
+    await edit("示例项目分组名称", "香山验证");
+    await edit("示例侧栏工作区名称", "LSQ验证");
+    await edit("示例聊天标签页标题", "检查加载队列");
+    const body = () =>
+      renderer.root.findByProps({ accessibilityLabel: "预览正文内容" }).props
+        .children;
+    expect(body()).toBe(
+      "local-host / 香山验证 / LSQ验证 / 检查加载队列 | LSQ验证",
+    );
+    await edit("示例侧栏工作区名称", "");
+    expect(body()).toBe(
+      "local-host / 香山验证 /  / 检查加载队列 | 检查加载队列",
+    );
+    await pressAction("保存设置");
+    const saved = JSON.stringify(vi.mocked(state.save).mock.calls);
+    expect(saved).toContain("{{workspace_name}}");
+    expect(saved).not.toContain("local-host");
+    expect(saved).not.toContain("检查加载队列");
+  });
+
   it("keeps template editing and preview visible while help and rules open on demand", async () => {
     await render();
     await selectSection("notifications");

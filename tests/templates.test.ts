@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig, migrateSettings } from "../shared/config";
-import type { Notification } from "../shared/contracts";
+import { notificationSchema, type Notification } from "../shared/contracts";
 import {
   defaultMessageTemplate,
   extractionExamples,
@@ -31,6 +31,33 @@ const format = (): MessageFormat => ({
 });
 
 describe("notification message templates", () => {
+  it("renders the four name layers without conflating them or expanding their contents", () => {
+    const f = format();
+    f.template = messageTemplateSchema.parse({
+      body: "{{hostname}} / {{project_name}} / {{workspace_name}} / {{session_title}}\n{{title}}",
+    });
+    const named = notificationSchema.parse({
+      ...notice,
+      hostname: "dev-host",
+      projectName: "验证仓库",
+      workspaceName: "LSQ验证",
+      sessionTitle: "排查 {{provider}}",
+      title: "LSQ验证",
+    });
+    expect(renderNotification(named, f).body).toBe(
+      "dev-host / 验证仓库 / LSQ验证 / 排查 {{provider}}\nLSQ验证",
+    );
+  });
+  it("keeps missing name layers empty for legacy records instead of substituting IDs or title", () => {
+    const f = format();
+    f.template = messageTemplateSchema.parse({
+      body: "{{hostname}}\n{{project_name}}\n{{workspace_name}}\n{{session_title}}\n{{title}}",
+    });
+    expect(renderNotification(notificationSchema.parse(notice), f).body).toBe(
+      "检查构建",
+    );
+  });
+
   it("renders the default message and omits absent optional lines", () => {
     expect(
       renderNotification({ ...notice, preview: undefined, attempts: 0 }).text,

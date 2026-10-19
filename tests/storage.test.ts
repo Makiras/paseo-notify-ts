@@ -56,7 +56,26 @@ describe("private operation storage", () => {
       turnId: null,
     });
     expect(store.state.read().recoveries[0]).not.toHaveProperty("fingerprint");
+    expect(store.state.read().recoveries[0]).not.toHaveProperty(
+      "workspaceName",
+    );
+    const names = {
+      hostname: "dev-host",
+      projectName: "验证仓库",
+      workspaceName: "LSQ验证",
+      sessionTitle: "检查加载队列",
+    };
+    await store.state.update((state) =>
+      Object.assign(state.recoveries[0]!, names),
+    );
     await store.close();
+    const reopened = await Storage.open(dir);
+    expect(reopened.state.read().recoveries[0]).toMatchObject({
+      ...names,
+      attempts: 2,
+      phase: "waiting",
+    });
+    await reopened.close();
   });
   it("serializes concurrent writes and survives a reopen", async () => {
     const dir = await directory();

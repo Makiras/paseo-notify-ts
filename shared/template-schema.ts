@@ -4,14 +4,30 @@ import { RE2JS } from "./vendor/re2js.js";
 export const templateFields = [
   ["event", "通知类型，例如“任务完成”“需要处理”"],
   ["event_type", "通知类型的英文代码，例如 completed、blocked"],
-  ["title", "Paseo 侧栏显示名称，优先使用当前工作区名称（含手动改名）"],
+  [
+    "title",
+    "默认显示名称：优先取侧栏工作区名称（含手动改名）；缺失时取聊天标题，再取未命名提示",
+  ],
+  ["hostname", "第 1 层：运行 Paseo 的系统主机名，不是客户端的连接昵称"],
+  [
+    "project_name",
+    "第 2 层：侧栏中的项目／仓库分组名称（Project），包含手动改名",
+  ],
+  [
+    "workspace_name",
+    "第 3 层：项目下面的侧栏工作区名称（Workspace），例如“LSQ验证”，包含手动改名",
+  ],
+  [
+    "session_title",
+    "第 4 层：聊天标签页标题（Agent），例如“检查加载队列”；不是侧栏工作区名称",
+  ],
   ["summary", "插件给出的任务状态说明，不是 AI 回复；AI 回复使用 {{preview}}"],
   [
     "preview",
     "AI 最终回复的开头片段；需开启“附带最终回复摘要”，长度由“摘要字符数”决定",
   ],
-  ["session_id", "会话的唯一编号，不是会话标题"],
-  ["workspace_id", "工作区的唯一编号；没有工作区时留空"],
+  ["session_id", "聊天会话的唯一编号（第 4 层 Agent），不是名称"],
+  ["workspace_id", "侧栏工作区的唯一编号（第 3 层 Workspace）；没有时留空"],
   ["schedule_id", "来源定时任务的编号；手动创建的普通会话留空"],
   ["provider", "使用的 AI 工具，例如 codex"],
   ["failure", "中断原因，例如“网络故障”；没有异常时留空"],

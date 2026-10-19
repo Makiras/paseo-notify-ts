@@ -1,4 +1,5 @@
 import type { PaseoApi, AgentTimelineItem } from "./types";
+import type { NamesLookup } from "./agent-title";
 import type { RecoveryCard } from "../shared/contracts";
 import {
   reviewWithPaseo,
@@ -15,7 +16,7 @@ export interface AgentView {
   error?: string | null;
 }
 export interface PaseoPort {
-  title?(agentId: string, workspaceId: string | null): Promise<string | null>;
+  names?: NamesLookup;
   inspect(agentId: string): Promise<AgentView>;
   history?(agentId: string): Promise<readonly AgentTimelineItem[]>;
   send(agentId: string, text: string, messageId: string): Promise<void>;
@@ -25,19 +26,30 @@ export interface PaseoPort {
 }
 export function paseoPort(paseo: PaseoApi): PaseoPort {
   return {
-    async title(agentId, workspaceId) {
-      if (workspaceId) {
-        try {
-          // name is the host-resolved sidebar name, including manual renames.
-          // Look up by workspace ID: several workspaces may share the same cwd.
-          const workspace = await paseo.workspaces.ref(workspaceId).refresh();
-          const name = workspace?.name?.trim();
-          if (name && name !== workspaceId) return name;
-        } catch {
-          // A missing/archived workspace must not suppress a session notification.
-        }
-      }
-      return (await paseo.agents.ref(agentId).refresh())?.agent.title ?? null;
+    async names(agentId, workspaceId) {
+      const [workspaceResult, agentResult] = await Promise.allSettled([
+        workspaceId
+          ? paseo.workspaces.ref(workspaceId).refresh()
+          : Promise.resolve(null),
+        paseo.agents.ref(agentId).refresh(),
+      ]);
+      const workspace =
+        workspaceResult.status === "fulfilled" ? workspaceResult.value : null;
+      const agent =
+        agentResult.status === "fulfilled" ? agentResult.value?.agent : null;
+      const projectName = (
+        workspace?.projectCustomName ?? workspace?.projectDisplayName
+      )?.trim();
+      return {
+        // Workspaces sharing a directory must remain distinct. The host resolves
+        // manual workspace/project renames; never derive these from cwd.
+        workspaceName: workspace?.name?.trim() || undefined,
+        projectName:
+          projectName && projectName !== workspace?.projectId
+            ? projectName
+            : undefined,
+        sessionTitle: agent?.title ?? undefined,
+      };
     },
     review: (request, signal) => reviewWithPaseo(paseo, request, signal),
     archiveReviewer: (id) => archiveReviewer(paseo, id),

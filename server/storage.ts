@@ -14,10 +14,12 @@ import { channelKindSchema, failureKindSchema } from "../shared/config";
 import {
   credentialsSchema,
   notificationSchema,
+  notificationNamesSchema,
   recoveryCardSchema,
 } from "../shared/contracts";
 
 export const recoverySchema = recoveryCardSchema.extend({
+  ...notificationNamesSchema.shape,
   provider: z.string(),
   workspaceId: z.string().nullable(),
   scheduleId: z.string().nullable().optional(),

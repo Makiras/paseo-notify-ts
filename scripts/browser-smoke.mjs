@@ -285,6 +285,18 @@ async function checkBrowser(name) {
       .click();
     await expect(page.getByText("占位符用法", { exact: true })).toBeVisible();
     await expect(
+      page.getByText("名称有四个层级", { exact: true }),
+    ).toBeVisible();
+    for (const field of [
+      "hostname",
+      "project_name",
+      "workspace_name",
+      "session_title",
+    ])
+      await expect(
+        page.getByText(`{{${field}}}`, { exact: true }),
+      ).toBeVisible();
+    await expect(
       page.getByText("Pattern 如何填写", { exact: true }),
     ).toHaveCount(0);
     await page
