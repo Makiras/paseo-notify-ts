@@ -15,7 +15,7 @@ export interface AgentView {
   error?: string | null;
 }
 export interface PaseoPort {
-  title?(agentId: string): Promise<string | null>;
+  title?(agentId: string, workspaceId: string | null): Promise<string | null>;
   inspect(agentId: string): Promise<AgentView>;
   history?(agentId: string): Promise<readonly AgentTimelineItem[]>;
   send(agentId: string, text: string, messageId: string): Promise<void>;
@@ -25,7 +25,18 @@ export interface PaseoPort {
 }
 export function paseoPort(paseo: PaseoApi): PaseoPort {
   return {
-    async title(agentId) {
+    async title(agentId, workspaceId) {
+      if (workspaceId) {
+        try {
+          // name is the host-resolved sidebar name, including manual renames.
+          // Look up by workspace ID: several workspaces may share the same cwd.
+          const workspace = await paseo.workspaces.ref(workspaceId).refresh();
+          const name = workspace?.name?.trim();
+          if (name && name !== workspaceId) return name;
+        } catch {
+          // A missing/archived workspace must not suppress a session notification.
+        }
+      }
       return (await paseo.agents.ref(agentId).refresh())?.agent.title ?? null;
     },
     review: (request, signal) => reviewWithPaseo(paseo, request, signal),

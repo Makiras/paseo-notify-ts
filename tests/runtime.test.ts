@@ -92,12 +92,11 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
-  it("resolves missing titles for permission and completed notifications, preserving session IDs", async () => {
+  it("uses the sidebar name instead of an existing chat title for permissions and completion", async () => {
     const s = await setup();
     s.port.title = vi.fn(async () => "LSQ 验证");
-    const unnamed = { ...agent, title: null };
-    await s.r.permission(unnamed, "title-permission");
-    await s.r.turnEnded({ ...event({ kind: "completed" }), agent: unnamed });
+    await s.r.permission(agent, "title-permission");
+    await s.r.turnEnded(event({ kind: "completed" }));
     const notices = s.store.state.read().deliveries.map((d) => d.notice);
     expect(notices).toHaveLength(2);
     expect(notices.map((n) => n.title)).toEqual(["LSQ 验证", "LSQ 验证"]);

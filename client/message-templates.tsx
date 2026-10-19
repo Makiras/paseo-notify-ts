@@ -265,7 +265,7 @@ export function MessageTemplates({
               />
               <Field
                 label="正文模板"
-                hint="例如填写“任务：{{title}}”，发送时会换成实际会话标题。支持换行，最多 6000 字符。"
+                hint="例如填写“任务：{{title}}”，发送时会换成 Paseo 侧栏显示名称，包含你的手动改名。支持换行，最多 6000 字符。"
                 value={value.body}
                 onChange={(body) => patch({ body })}
                 theme={theme}
@@ -353,7 +353,7 @@ export function MessageTemplates({
               collapseLabel="收起示例数据"
             >
               <Field
-                label="示例会话标题"
+                label="示例显示名称"
                 value={sampleTitle}
                 onChange={setSampleTitle}
                 theme={theme}

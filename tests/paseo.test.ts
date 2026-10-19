@@ -16,20 +16,67 @@ function adapter(
   }));
   const refresh = vi.fn(async () => (snapshot ? { agent: snapshot } : null));
   const send = vi.fn(async () => {});
+  const workspaceRefresh = vi.fn(
+    async (): Promise<{ name: string } | null> => null,
+  );
+  const workspaceRef = vi.fn((_id: string) => ({ refresh: workspaceRefresh }));
   const paseo = {
     agents: { ref: () => ({ timeline: { refetch }, refresh, send }) },
+    workspaces: { ref: workspaceRef },
   } as unknown as PaseoApi;
-  return { port: paseoPort(paseo), refetch, refresh, send };
+  return {
+    port: paseoPort(paseo),
+    refetch,
+    refresh,
+    send,
+    workspaceRefresh,
+    workspaceRef,
+  };
 }
 
 describe("Paseo adapter", () => {
+  it("uses the renamed workspace's display name and refreshes it for later notifications", async () => {
+    const s = adapter({
+      title: "这个仓库是验证 Xiangshan，Kunminghu-v3 的仓库。",
+      status: "idle",
+      pendingPermissions: [],
+    });
+    s.workspaceRefresh.mockResolvedValue({ name: "bpu-verify-kunminghu-v3" });
+    expect(await s.port.title!("agent-a", "workspace-a")).toBe(
+      "bpu-verify-kunminghu-v3",
+    );
+    expect(s.workspaceRef).toHaveBeenCalledWith("workspace-a");
+    s.workspaceRefresh.mockResolvedValue({ name: "BPU验证" });
+    expect(await s.port.title!("agent-a", "workspace-a")).toBe("BPU验证");
+    expect(s.refresh).not.toHaveBeenCalled();
+    expect(s.refetch).not.toHaveBeenCalled();
+  });
+  it("keeps workspaces sharing a directory separate by their IDs", async () => {
+    const s = adapter();
+    s.workspaceRef.mockImplementation((id) => ({
+      refresh: vi.fn(async () => ({
+        name: id === "lsq" ? "LSQ验证" : "ICache验证",
+      })),
+    }));
+    expect(await s.port.title!("agent-a", "lsq")).toBe("LSQ验证");
+    expect(await s.port.title!("agent-b", "icache")).toBe("ICache验证");
+  });
+  it("falls back to the chat title when workspace metadata cannot be read", async () => {
+    const s = adapter({
+      title: "会话名称",
+      status: "idle",
+      pendingPermissions: [],
+    });
+    s.workspaceRefresh.mockRejectedValue(new Error("workspace unavailable"));
+    expect(await s.port.title!("a", "workspace-a")).toBe("会话名称");
+  });
   it("reads a missing event title from current agent metadata, without history", async () => {
     const s = adapter({
       title: "LSQ 验证",
       status: "error",
       pendingPermissions: [],
     });
-    expect(await s.port.title!("a")).toBe("LSQ 验证");
+    expect(await s.port.title!("a", null)).toBe("LSQ 验证");
     expect(s.refresh).toHaveBeenCalledOnce();
     expect(s.refetch).not.toHaveBeenCalled();
   });

@@ -4,7 +4,7 @@ import { RE2JS } from "./vendor/re2js.js";
 export const templateFields = [
   ["event", "通知类型，例如“任务完成”“需要处理”"],
   ["event_type", "通知类型的英文代码，例如 completed、blocked"],
-  ["title", "会话标题"],
+  ["title", "Paseo 侧栏显示名称，优先使用当前工作区名称（含手动改名）"],
   ["summary", "插件给出的任务状态说明，不是 AI 回复；AI 回复使用 {{preview}}"],
   [
     "preview",
@@ -34,7 +34,7 @@ export const defaultBodyTemplate = [
 ].join("\n");
 export const extractionSources = [
   { value: "preview", label: "最终回复摘要" },
-  { value: "title", label: "会话标题" },
+  { value: "title", label: "显示名称" },
   { value: "summary", label: "状态说明" },
 ] as const;
 
