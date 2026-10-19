@@ -14,6 +14,13 @@ describe("failure classification", () => {
     [undefined, "Rate limit exceeded. retry after 20 seconds", "rate_limited"],
     [undefined, "未知错误", "unknown"],
     ["content_filter", "blocked", "policy_blocked"],
+    ["cyber_policy", "blocked", "policy_blocked"],
+    ["503", "cyber_policy: network error", "policy_blocked"],
+    [
+      "provider.unknown",
+      "This content was flagged for possible cybersecurity risk.",
+      "policy_blocked",
+    ],
   ])("%s %s -> %s", (code, message, kind) => {
     expect(
       classify({

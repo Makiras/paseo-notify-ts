@@ -59,6 +59,7 @@ npm run hermes:smoke
 - Node.js 22 / 24：完整检查、宿主冒烟和打包；Node.js 22 上传安装构件，保存 14 天。
 - `installed-host`：安装并启动真实 Paseo，在 Chromium 和 Firefox 中执行设置页回归；失败时上传浏览器诊断构件，保存 7 天。
 - `android-runtime`：构建并缓存与 React Native 对应的 Hermes，执行插件动态加载和模板测试。
+- `opencode-retry`：分别安装 OpenCode 2.0.30 和 npm latest，用隔离配置和本地模拟模型验证 cyber 拒绝、部分输出、普通重试及 Goal 插件不会在该拒绝后继续。
 
 CI 默认只有读取仓库权限。发布流程复用全部检查；发布阶段单独获得 `contents: write`，只有包括真实 Host 和 Hermes 在内的所有任务通过后才创建 Release。
 

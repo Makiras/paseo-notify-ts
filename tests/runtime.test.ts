@@ -92,6 +92,23 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it("resolves missing titles for permission and completed notifications, preserving session IDs", async () => {
+    const s = await setup();
+    s.port.title = vi.fn(async () => "LSQ 验证");
+    const unnamed = { ...agent, title: null };
+    await s.r.permission(unnamed, "title-permission");
+    await s.r.turnEnded({ ...event({ kind: "completed" }), agent: unnamed });
+    const notices = s.store.state.read().deliveries.map((d) => d.notice);
+    expect(notices).toHaveLength(2);
+    expect(notices.map((n) => n.title)).toEqual(["LSQ 验证", "LSQ 验证"]);
+    expect(notices.every((n) => n.agentId === agent.id)).toBe(true);
+  });
+  it("uses the refreshed title in recovery records and future notices", async () => {
+    const s = await setup();
+    s.port.title = vi.fn(async () => "LSQ 验证");
+    await s.r.turnEnded({ ...event(), agent: { ...agent, title: null } });
+    expect(s.store.state.read().recoveries[0]!.title).toBe("LSQ 验证");
+  });
   it("enforces the session attempt budget across continuation failures", async () => {
     const s = await setup();
     s.c.recoveryOverrides.sessions[agent.id] = {
@@ -611,15 +628,20 @@ describe("callback recovery and durable notification flow", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(s.send).not.toHaveBeenCalled();
   });
-  it("does not let AI review override policy and quota exclusions", async () => {
-    const s = await setup(true);
-    await s.r.turnEnded(
-      event({ kind: "failed", error: { message: "insufficient_quota" } }),
-    );
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(s.review).not.toHaveBeenCalled();
-    expect(s.send).not.toHaveBeenCalled();
-  });
+  it.each([
+    "insufficient_quota",
+    "cyber_policy: network error",
+    "This content was flagged for possible cybersecurity risk.",
+  ])(
+    "does not let AI review override terminal rejection: %s",
+    async (message) => {
+      const s = await setup(true);
+      await s.r.turnEnded(event({ kind: "failed", error: { message } }));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(s.review).not.toHaveBeenCalled();
+      expect(s.send).not.toHaveBeenCalled();
+    },
+  );
   it("reviews each retry and archives the reviewer before submitting continuation", async () => {
     const s = await setup(true);
     await s.r.turnEnded(event());

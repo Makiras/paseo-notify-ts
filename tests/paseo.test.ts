@@ -23,6 +23,16 @@ function adapter(
 }
 
 describe("Paseo adapter", () => {
+  it("reads a missing event title from current agent metadata, without history", async () => {
+    const s = adapter({
+      title: "LSQ 验证",
+      status: "error",
+      pendingPermissions: [],
+    });
+    expect(await s.port.title!("a")).toBe("LSQ 验证");
+    expect(s.refresh).toHaveBeenCalledOnce();
+    expect(s.refetch).not.toHaveBeenCalled();
+  });
   it("checks a failed long session without fetching any history or user boundary", async () => {
     const s = adapter();
     s.refetch.mockRejectedValue(new Error("history unavailable"));

@@ -15,6 +15,7 @@ export interface AgentView {
   error?: string | null;
 }
 export interface PaseoPort {
+  title?(agentId: string): Promise<string | null>;
   inspect(agentId: string): Promise<AgentView>;
   history?(agentId: string): Promise<readonly AgentTimelineItem[]>;
   send(agentId: string, text: string, messageId: string): Promise<void>;
@@ -24,6 +25,9 @@ export interface PaseoPort {
 }
 export function paseoPort(paseo: PaseoApi): PaseoPort {
   return {
+    async title(agentId) {
+      return (await paseo.agents.ref(agentId).refresh())?.agent.title ?? null;
+    },
     review: (request, signal) => reviewWithPaseo(paseo, request, signal),
     archiveReviewer: (id) => archiveReviewer(paseo, id),
     async inspect(agentId) {

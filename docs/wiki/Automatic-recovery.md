@@ -36,6 +36,8 @@
 
 三个可恢复类别默认启用，但只有「自动继续」开启后才生效。
 
+OpenCode 自带的模型请求重试属于另一层，不受本页开关控制。要在 OpenCode 内部阻止明确的 cyber 拒绝重试，可单独安装 [OpenCode cyber 拒绝保护](OpenCode-cyber-guard.md)。
+
 ## 预算
 
 | 设置             | 默认                       | 用途                                                 |

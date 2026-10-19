@@ -1,5 +1,6 @@
 import type { PluginTurnOutcome } from "@getpaseo/plugin/server";
 import type { FailureKind } from "../shared/config";
+import { isCyberRejection } from "./opencode/cyber-retry-guard";
 
 export interface Failure {
   kind: FailureKind;
@@ -36,6 +37,7 @@ const codes: Record<string, FailureKind> = {
   safety_violation: "policy_blocked",
   policy_violation: "policy_blocked",
   cyber_safety: "policy_blocked",
+  cyber_policy: "policy_blocked",
 };
 
 export function classify(
@@ -60,6 +62,13 @@ export function classify(
   }
   const code = outcome.error.code?.toLowerCase();
   const text = `${outcome.error.message}\n${timelineError}`.slice(0, 16000);
+  // Explicit cyber refusal wins even when a gateway wraps it in a network/5xx error.
+  if (isCyberRejection({ code, message: text }))
+    return {
+      kind: "policy_blocked",
+      evidence:
+        code === "cyber_policy" || code === "cyber_safety" ? "code" : "error",
+    };
   // Quota / policy / context details take precedence over generic HTTP rate or server codes.
   const rules: [FailureKind, RegExp][] = [
     [

@@ -1,7 +1,7 @@
 {
   "name": "paseo-notify-ts",
   "private": true,
-  "version": "0.4.4",
+  "version": "0.4.5",
   "type": "module",
   "description": "Native Paseo notifications and automatic recovery with optional AI review",
   "license": "MIT",
@@ -39,6 +39,7 @@
     "host:prepare": "node scripts/prepare-host.mjs",
     "host:smoke": "node scripts/host-smoke.mjs",
     "browser:smoke": "node scripts/browser-smoke.mjs",
+    "opencode:smoke": "node scripts/opencode-smoke.mjs",
     "hermes:prepare": "node scripts/prepare-hermes.mjs",
     "hermes:smoke": "node scripts/hermes-smoke.mjs",
     "format": "prettier --write index.* shared server client scripts tests docs .github/workflows *.json *.md",

@@ -17,6 +17,7 @@ import type {
   RuntimeStatus,
 } from "../shared/contracts";
 import { classify } from "./classifier";
+import { notificationTitle } from "./agent-title";
 import {
   deliver,
   DeliveryError,
@@ -455,6 +456,7 @@ export class Runtime {
       const now = this.now();
       if (this.storage.state.read().seen.some((e) => e.key === key)) return;
       const failure = classify(event.outcome, finalText(event.timeline));
+      const title = await notificationTitle(event.agent, this.port?.title);
       let changed: Recovery | undefined;
       await this.storage.state.update((state) => {
         try {
@@ -506,7 +508,7 @@ export class Runtime {
             workspaceId: event.agent.workspaceId,
             scheduleId,
             provider: event.agent.provider,
-            title: (event.agent.title ?? event.agent.id).slice(0, 200),
+            title,
             createdAt: now,
           };
           const preview = this.config.notifications.includePreview
@@ -563,6 +565,7 @@ export class Runtime {
                 reviews: [],
               };
           if (!continuation) state.recoveries.push(r);
+          r.title = title;
           r.workspaceId = event.agent.workspaceId;
           r.failure = failure.kind;
           r.awaitingStart = false;
@@ -709,6 +712,7 @@ export class Runtime {
       (!this.config.includeSubagents && agent.parentAgentId)
     )
       return;
+    const title = await notificationTitle(agent, this.port?.title);
     await this.storage.state.update((state) => {
       const key = `permission:${agent.id}:${requestId}`;
       if (state.seen.some((e) => e.key === key)) return;
@@ -720,7 +724,7 @@ export class Runtime {
         workspaceId: agent.workspaceId,
         scheduleId,
         provider: agent.provider,
-        title: (agent.title ?? agent.id).slice(0, 200),
+        title,
         summary: "任务正在等待权限确认，请在 Paseo 中处理。",
         createdAt: this.now(),
         attempts: 0,

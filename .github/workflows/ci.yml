@@ -15,6 +15,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  opencode-retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        opencode: ["2.0.30", "latest"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - name: Install the actual OpenCode runtime
+        run: npm install --prefix .build/opencode --no-audit --no-fund "@opencode/cli@${{ matrix.opencode }}" @prevalentware/opencode-goal-plugin@0.1.64
+      - name: Verify cyber refusal and ordinary retries against a local fixture
+        env:
+          OPENCODE_BIN: ${{ github.workspace }}/.build/opencode/node_modules/.bin/opencode
+          OPENCODE_GOAL_PACKAGE: ${{ github.workspace }}/.build/opencode/node_modules/@prevalentware/opencode-goal-plugin
+        run: npm run opencode:smoke
   android-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
