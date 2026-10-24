@@ -10,6 +10,12 @@ import {
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import {
+  localHost,
+  processIdentity,
+  ownerSchema,
+  ownerStatus,
+} from "./process-owner";
 import { channelKindSchema, failureKindSchema } from "../shared/config";
 import {
   credentialsSchema,
@@ -143,10 +149,19 @@ export class Storage {
     await chmod(directory, 0o700);
     const lockFile = join(directory, "owner.lock");
     const token = randomUUID();
+    const host = await localHost();
+    const identity = await processIdentity(process.pid);
     const acquire = async () => {
       const lock = await open(lockFile, "wx", 0o600);
       try {
-        await lock.writeFile(JSON.stringify({ pid: process.pid, token }));
+        await lock.writeFile(
+          JSON.stringify({
+            pid: process.pid,
+            token,
+            host,
+            ...(identity ? { identity } : {}),
+          }),
+        );
       } finally {
         await lock.close();
       }
@@ -160,18 +175,21 @@ export class Storage {
       const reapFile = join(directory, "reap.lock");
       const reaper = await open(reapFile, "wx", 0o600);
       try {
-        const owner = z
-          .object({ pid: z.number().int().positive(), token: z.string() })
-          .parse(JSON.parse(await readFile(lockFile, "utf8")));
-        let alive = true;
-        try {
-          process.kill(owner.pid, 0);
-        } catch (e) {
-          alive = (e as NodeJS.ErrnoException).code !== "ESRCH";
-        }
-        if (alive)
+        const owner = ownerSchema.parse(
+          JSON.parse(await readFile(lockFile, "utf8")),
+        );
+        const status = await ownerStatus(owner, host);
+        if (status === "foreign")
           throw new Error(
-            "已有 Notifier 使用此数据目录；多个实例须分别设置 PASEO_NOTIFIER_STATE_DIR",
+            "Notifier 数据目录被另一台主机的锁占用；请为不同 Host 设置独立的 PASEO_NOTIFIER_STATE_DIR",
+          );
+        if (status === "unknown")
+          throw new Error(
+            "无法确认 Notifier 锁对应的进程身份，已保留锁；请检查进程读取权限后重新加载插件",
+          );
+        if (status === "active")
+          throw new Error(
+            "已有 Notifier 使用此数据目录，或旧锁对应的 PID 仍存活但无法核对身份；多个实例须分别设置 PASEO_NOTIFIER_STATE_DIR",
           );
         await rm(lockFile);
         await acquire();

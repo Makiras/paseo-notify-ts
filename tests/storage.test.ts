@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Storage } from "../server/storage";
+import { localHost, processIdentity } from "../server/process-owner";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -15,6 +16,52 @@ async function directory() {
   return dir;
 }
 describe("private operation storage", () => {
+  it.runIf(process.platform === "linux")(
+    "reclaims a reused live PID while preserving the operations journal",
+    async () => {
+      const dir = await directory();
+      const first = await Storage.open(dir);
+      await first.state.update((s) => {
+        s.seen.push({ key: "keep-budget", at: 1 });
+      });
+      await first.close();
+      const identity = await processIdentity(process.pid);
+      expect(identity).not.toBeNull();
+      await writeFile(
+        join(dir, "owner.lock"),
+        JSON.stringify({
+          pid: process.pid,
+          token: "old-process",
+          host: await localHost(),
+          identity: { ...identity, startTicks: "0" },
+        }),
+      );
+      const next = await Storage.open(dir);
+      try {
+        expect(next.state.read().seen).toEqual([{ key: "keep-budget", at: 1 }]);
+        const lock = JSON.parse(
+          await readFile(join(dir, "owner.lock"), "utf8"),
+        );
+        expect(lock.identity).toEqual(identity);
+        expect(lock.token).not.toBe("old-process");
+        await expect(Storage.open(dir)).rejects.toThrow("已有 Notifier");
+      } finally {
+        await next.close();
+      }
+    },
+  );
+  it("preserves another host's lock without looking up its PID locally", async () => {
+    const dir = await directory();
+    const lock = JSON.stringify({
+      pid: 2147483647,
+      token: "foreign",
+      host: { name: "foreign-host.example.invalid" },
+    });
+    await writeFile(join(dir, "owner.lock"), lock);
+    await expect(Storage.open(dir)).rejects.toThrow("另一台主机");
+    expect(await readFile(join(dir, "owner.lock"), "utf8")).toBe(lock);
+  });
+
   it("loads existing records without review fields and preserves their retry budgets", async () => {
     const dir = await directory();
     await writeFile(
