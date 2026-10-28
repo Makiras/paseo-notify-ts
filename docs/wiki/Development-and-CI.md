@@ -52,11 +52,21 @@ npm run hermes:smoke
 
 这能捕获 v0.3.0 的 `right operand of 'in' is not an object` 回归。它是实际引擎兼容测试，**不等同于 Android 模拟器或真机上的原生 UI 测试**；键盘、系统控件及设备通知展示仍需真机验证。
 
+## 新旧 Paseo 摘要兼容检查
+
+```sh
+npm install --prefix .build/preview-host --no-audit --no-fund @getpaseo/cli@0.13.2
+npm run preview:smoke
+```
+
+也可通过 `PASEO_TEST_SERVER_DIR` 指定已安装的 `@getpaseo/server` 包目录。测试使用该版本真实的 `publishAgentStream`、时间线投影、设置存储、编译器和插件加载器；会话、SDK 查询响应与通知目标使用隔离测试数据，不启动真实 AI 或发送外部通知。覆盖结束回调消息为空／非空、流式回复合并、回合隔离、去重和摘要关闭后的行为。
+
 ## CI
 
 [Checks](https://github.com/Makiras/paseo-notify-ts/actions/workflows/ci.yml) 在 main 推送、PR 和手动触发时运行：
 
 - Node.js 22 / 24：完整检查、宿主冒烟和打包；Node.js 22 上传安装构件，保存 14 天。
+- Paseo 摘要兼容矩阵：安装 `0.11.2`、`0.13.2`、`latest` 的实际 CLI／宿主及配套 SDK，运行 `preview:smoke`，避免只在固定旧 SDK 上模拟事件。
 - `installed-host`：安装并启动真实 Paseo，在 Chromium 和 Firefox 中执行设置页回归；失败时上传浏览器诊断构件，保存 7 天。
 - `android-runtime`：构建并缓存与 React Native 对应的 Hermes，执行插件动态加载和模板测试。
 - `opencode-retry`：分别安装 OpenCode 2.0.30 和 npm latest，用隔离配置和本地模拟模型验证 cyber 拒绝、部分输出、普通重试及 Goal 插件不会在该拒绝后继续。

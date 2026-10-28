@@ -1,7 +1,7 @@
 {
   "name": "paseo-notify-ts",
   "private": true,
-  "version": "0.4.7",
+  "version": "0.4.8",
   "type": "module",
   "description": "Native Paseo notifications and automatic recovery with optional AI review",
   "license": "MIT",
@@ -48,7 +48,8 @@
     "version:check": "node scripts/version.mjs",
     "version:set": "node scripts/version.mjs set",
     "vendor:check": "node scripts/vendor.mjs",
-    "vendor:update": "node scripts/vendor.mjs --write"
+    "vendor:update": "node scripts/vendor.mjs --write",
+    "preview:smoke": "node scripts/preview-smoke.mjs"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",

@@ -1,4 +1,5 @@
 import type { PaseoApi, AgentTimelineItem } from "./types";
+import { readTurnPreview, type PreviewReader } from "./preview";
 import type { NamesLookup } from "./agent-title";
 import type { RecoveryCard } from "../shared/contracts";
 import {
@@ -17,6 +18,7 @@ export interface AgentView {
 }
 export interface PaseoPort {
   names?: NamesLookup;
+  preview?: PreviewReader;
   inspect(agentId: string): Promise<AgentView>;
   history?(agentId: string): Promise<readonly AgentTimelineItem[]>;
   send(agentId: string, text: string, messageId: string): Promise<void>;
@@ -26,6 +28,8 @@ export interface PaseoPort {
 }
 export function paseoPort(paseo: PaseoApi): PaseoPort {
   return {
+    preview: (agentId, turnId, signal) =>
+      readTurnPreview(paseo, agentId, turnId, signal),
     async names(agentId, workspaceId) {
       const [workspaceResult, agentResult] = await Promise.allSettled([
         workspaceId
@@ -73,7 +77,7 @@ export function paseoPort(paseo: PaseoApi): PaseoPort {
       };
     },
     async history(agentId) {
-      // Only AI review needs a bounded excerpt. No user-boundary pagination.
+      // AI review uses its own excerpt; notification preview is scoped by turnId.
       const page = await paseo.agents.ref(agentId).timeline.refetch({
         direction: "tail",
         limit: 100,

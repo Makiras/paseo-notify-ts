@@ -18,6 +18,7 @@ import type {
   RuntimeStatus,
 } from "../shared/contracts";
 import { classify } from "./classifier";
+import { boundedPreview } from "./preview";
 import { notificationNames } from "./agent-title";
 import {
   deliver,
@@ -463,6 +464,23 @@ export class Runtime {
       if (this.storage.state.read().seen.some((e) => e.key === key)) return;
       const failure = classify(event.outcome, finalText(event.timeline));
       const names = await notificationNames(event.agent, this.port?.names);
+      let reply = finalText(event.timeline);
+      if (
+        event.outcome.kind === "completed" &&
+        !failure &&
+        this.config.notifications.includePreview &&
+        !reply &&
+        event.turnId &&
+        this.port?.preview
+      ) {
+        reply = await boundedPreview(
+          this.port.preview,
+          event.agent.id,
+          event.turnId,
+          this.controller.signal,
+        );
+      }
+      if (this.closed || !this.config.enabled) return;
       let changed: Recovery | undefined;
       await this.storage.state.update((state) => {
         try {
@@ -518,7 +536,7 @@ export class Runtime {
             createdAt: now,
           };
           const preview = this.config.notifications.includePreview
-            ? Array.from(finalText(event.timeline))
+            ? Array.from(reply)
                 .slice(0, this.config.notifications.previewCharacters)
                 .join("")
             : "";

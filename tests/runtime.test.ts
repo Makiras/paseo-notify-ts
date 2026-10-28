@@ -92,6 +92,96 @@ async function setup(reviewEnabled = false) {
   };
 }
 describe("callback recovery and durable notification flow", () => {
+  it("fills a completion preview from the exact turn when new hosts omit callback history", async () => {
+    const s = await setup();
+    s.c.notifications.includePreview = true;
+    s.c.notifications.previewCharacters = 80;
+    await s.r.configure(s.c);
+    s.port.preview = vi.fn(async () => "🌍".repeat(100));
+    const completed = {
+      ...event({ kind: "completed" }),
+      turnId: "turn-new",
+      timeline: [],
+    };
+    await s.r.turnEnded(completed);
+    await s.r.turnEnded(completed);
+    expect(s.port.preview).toHaveBeenCalledExactlyOnceWith(
+      agent.id,
+      "turn-new",
+      expect.any(AbortSignal),
+    );
+    expect(s.store.state.read().deliveries).toHaveLength(1);
+    expect(s.store.state.read().deliveries[0]!.notice.preview).toBe(
+      "🌍".repeat(80),
+    );
+    expect(s.history).not.toHaveBeenCalled();
+  });
+  it("does not read replies when preview is off, old callbacks carry text, or turn identity is absent", async () => {
+    const s = await setup();
+    s.port.preview = vi.fn(async () => "must not read");
+    await s.r.turnEnded({
+      ...event({ kind: "completed" }),
+      turnId: "off",
+      timeline: [],
+    });
+    s.c.notifications.includePreview = true;
+    await s.r.configure(s.c);
+    await s.r.turnEnded({ ...event({ kind: "completed" }), turnId: "old" });
+    await s.r.turnEnded({
+      ...event({ kind: "completed" }),
+      turnId: null,
+      timeline: [],
+    });
+    expect(s.port.preview).not.toHaveBeenCalled();
+    expect(
+      s.store.state.read().deliveries.map((d) => d.notice.preview),
+    ).toEqual([undefined, "工作已完成", undefined]);
+  });
+  it("still sends completion when preview lookup fails, and recovery never depends on it", async () => {
+    const s = await setup();
+    s.c.notifications.includePreview = true;
+    await s.r.configure(s.c);
+    s.port.preview = vi.fn(async () => {
+      throw new Error("unavailable");
+    });
+    await s.r.turnEnded({
+      ...event({ kind: "completed" }),
+      turnId: "complete",
+      timeline: [],
+    });
+    expect(s.store.state.read().deliveries[0]!.notice).toMatchObject({
+      kind: "completed",
+    });
+    expect(s.store.state.read().deliveries[0]!.notice.preview).toBeUndefined();
+    await s.r.turnEnded({ ...event(), turnId: "failed", timeline: [] });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s.send).toHaveBeenCalledOnce();
+    expect(s.port.preview).toHaveBeenCalledOnce();
+  });
+  it("drops fetched reply content if preview is disabled while the query is in flight", async () => {
+    const s = await setup();
+    s.c.notifications.includePreview = true;
+    await s.r.configure(s.c);
+    let resolve!: (text: string) => void;
+    s.port.preview = vi.fn(
+      () =>
+        new Promise<string>((r) => {
+          resolve = r;
+        }),
+    );
+    const pending = s.r.turnEnded({
+      ...event({ kind: "completed" }),
+      turnId: "privacy",
+      timeline: [],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    s.c.notifications.includePreview = false;
+    await s.r.configure(s.c);
+    resolve("private reply");
+    await pending;
+    expect(s.store.state.read().deliveries[0]!.notice.preview).toBeUndefined();
+  });
+
   it("uses the sidebar name instead of an existing chat title for permissions and completion", async () => {
     const s = await setup();
     s.port.names = vi.fn(async () => ({

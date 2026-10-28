@@ -15,6 +15,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  preview-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        paseo: ["0.11.2", "0.13.2", "latest"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install the actual Paseo host and its SDK
+        run: npm install --prefix .build/preview-host --no-audit --no-fund "@getpaseo/cli@${{ matrix.paseo }}"
+      - name: Verify final reply against the actual host lifecycle publisher
+        run: npm run preview:smoke
   opencode-retry:
     runs-on: ubuntu-latest
     timeout-minutes: 10
